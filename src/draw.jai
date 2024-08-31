@@ -244,27 +244,20 @@ draw_welcome_screen :: (main_area: Rect) {
 
 draw_cow :: (main_area: Rect) {
     draw_rect(main_area, Color.BACKGROUND_4);
-    // rect1 : Rect = .{
-    //      100,
-    //      100,
-    //      100,
-    //      100,
-    // };
-    // draw_rect(rect1, Color.BACKGROUND_1);
     text := "Welcome to cow mode!";
     
     Simp.prepare_text(font_ui_big, text);
     Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
     
     editor_rect : Rect = .{
-        20, 100,
+        -cow_camera.position.x, -cow_camera.position.y,
         500, main_area.h - 200,
     };
     for editors.floating_editors {
         draw_editor(it, editor_rect, 0, get_ui_id_from_loc() + xx it_index);
         editor := *open_editors[it];
         buffer := *open_buffers[editor.buffer_id];
-        draw_file_info(buffer, 0, 0, .{editor_rect.x, main_area.h - 90});
+        draw_file_info(buffer, 0, 0, .{editor_rect.x, editor_rect.y + editor_rect.h + 10});
         editor_rect.x += 530;
     }
 }

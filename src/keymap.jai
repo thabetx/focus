@@ -354,6 +354,12 @@ ACTIONS_COMMON :: string.[
     "go_to_previous_build_error_on_the_side",
     
     "toggle_cow",
+    "cow_left",
+    "cow_right",
+    "cow_up",
+    "cow_down",
+    "cow_zoom_in",
+    "cow_zoom_out",
 ];
 
 ACTIONS_EDITORS :: #run arrays_concat(ACTIONS_COMMON, string.[

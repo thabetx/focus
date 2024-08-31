@@ -416,6 +416,10 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
         case .build_kill_running_command;                       build_kill_running_command();                       return true;
         case .build_clear_output;                               build_clear_output();                               return true;
         case .toggle_cow;                                       toggle_cow();                                       return true;
+        case .cow_left;                                         cow_left();                                         return true;
+        case .cow_right;                                        cow_right();                                        return true;
+        case .cow_up;                                           cow_up();                                           return true;
+        case .cow_down;                                         cow_down();                                         return true;
 
         // TODO: search_in_buffer
         case .search_in_project;
@@ -424,16 +428,6 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
     return false;
 }
 
-old_layout : Editor_State.Layout = .None; 
-toggle_cow :: () {
-    if editors.layout != .Cow {
-        old_layout = editors.layout;
-        editors.layout = .Cow;
-        print("%\n", editors.floating_editors.count);
-    } else {
-        editors.layout = old_layout;
-    }
-}
 
 maybe_execute_a_build_command :: (action: Action_Build) -> handled: bool {
     if action == INVALID_KEYMAP_ACTION return false;
@@ -894,6 +888,7 @@ dont_ignore_next_window_resize := false;
 
 #load "layout.jai";
 #load "editors.jai";
+#load "cow.jai";
 #load "buffer.jai";
 #load "build_system.jai";
 #load "unicode.jai";
