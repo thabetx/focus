@@ -415,12 +415,24 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
 
         case .build_kill_running_command;                       build_kill_running_command();                       return true;
         case .build_clear_output;                               build_clear_output();                               return true;
+        case .toggle_cow;                                       toggle_cow();                                       return true;
 
         // TODO: search_in_buffer
         case .search_in_project;
             if active_global_widget == .editors then finder_open_from_editor(); else finder_open();                 return true;
     }
     return false;
+}
+
+old_layout : Editor_State.Layout = .None; 
+toggle_cow :: () {
+    if editors.layout != .Cow {
+        old_layout = editors.layout;
+        editors.layout = .Cow;
+        print("%\n", editors.floating_editors.count);
+    } else {
+        editors.layout = old_layout;
+    }
 }
 
 maybe_execute_a_build_command :: (action: Action_Build) -> handled: bool {

@@ -189,6 +189,7 @@ base_commands := #run -> [] Command {
         cmd( "Copy Current Line Info",            .copy_current_line_info,           .Single ),
 
         cmd( "Choose Language Syntax",            .choose_language,                  .Single ),
+        cmd( "Toggle Cow",                        .toggle_cow,                       .None ),
     ];
 
     linux_commands := Command.[

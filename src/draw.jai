@@ -59,6 +59,9 @@ draw_frame :: () {
             splitter_y := ifx config.settings.status_bar_position == .bottom then left_rect.y + status_bar_height else 0;
             splitter_rect := make_rect(left_rect.x + left_rect.w, splitter_y, 2, left_rect.h - status_bar_height);
             draw_splitter(splitter_rect, split_x, .editor_splitter);
+        case .Cow;
+            draw_cow(screen);
+            
     }
 
     maybe_draw_color_preview_panel();
@@ -237,6 +240,33 @@ draw_welcome_screen :: (main_area: Rect) {
         }
     }
 
+}
+
+draw_cow :: (main_area: Rect) {
+    draw_rect(main_area, Color.BACKGROUND_4);
+    // rect1 : Rect = .{
+    //      100,
+    //      100,
+    //      100,
+    //      100,
+    // };
+    // draw_rect(rect1, Color.BACKGROUND_1);
+    text := "Welcome to cow mode!";
+    
+    Simp.prepare_text(font_ui_big, text);
+    Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
+    
+    editor_rect : Rect = .{
+        20, 100,
+        500, main_area.h - 200,
+    };
+    for editors.floating_editors {
+        draw_editor(it, editor_rect, 0, get_ui_id_from_loc() + xx it_index);
+        editor := *open_editors[it];
+        buffer := *open_buffers[editor.buffer_id];
+        draw_file_info(buffer, 0, 0, .{editor_rect.x, main_area.h - 90});
+        editor_rect.x += 530;
+    }
 }
 
 draw_user_messages :: (main_area: Rect, status_bar_height: float) {
