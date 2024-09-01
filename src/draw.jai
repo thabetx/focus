@@ -249,16 +249,14 @@ draw_cow :: (main_area: Rect) {
     Simp.prepare_text(font_ui_big, text);
     Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
     
-    editor_rect : Rect = .{
-        -cow_camera.position.x, -cow_camera.position.y,
-        500, main_area.h - 200,
-    };
-    for editors.floating_editors {
-        draw_editor(it, editor_rect, 0, get_ui_id_from_loc() + xx it_index);
-        editor := *open_editors[it];
+    for cow_boxes {
+        world_rect := it.rect;
+        world_rect.x += cow_camera.position.x;
+        world_rect.y += cow_camera.position.y;
+        draw_editor(it.editor_id, world_rect, 0, xx it.editor_id); // are those unique
+        editor := *open_editors[it.editor_id];
         buffer := *open_buffers[editor.buffer_id];
-        draw_file_info(buffer, 0, 0, .{editor_rect.x, editor_rect.y + editor_rect.h + 10});
-        editor_rect.x += 530;
+        draw_file_info(buffer, 0, 0, .{world_rect.x, world_rect.y + world_rect.h + 10});
     }
 }
 

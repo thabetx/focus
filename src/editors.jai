@@ -408,14 +408,6 @@ active_editor_type_char :: (char: u32) {
 
 get_active_editor_and_buffer :: () -> *Editor, *Buffer {
     if editors.layout == .None && !build_panel_is_active() return null, null;
-    if editors.layout == .Cow {
-        if editors.floating_editors {
-            editor := *open_editors[editors.floating_editors[0]];
-            buffer := *open_buffers[editor.buffer_id];
-            return editor, buffer;
-        }
-        return null, null;
-    }
     editor := *open_editors[editors.active];
     buffer := *open_buffers[editor.buffer_id];
     return editor, buffer;
@@ -541,15 +533,12 @@ editors_open_buffer :: (buffer_id: s64, placement: Editor_Placement = .in_place)
             editors.left  = editors.active;  // we don't use it but editor history needs it
             editors.right = editors.active;
             editors.layout = .Single;
-            array_add(*editors.floating_editors, editors.active);
-
 
         case .Single;
             if placement == .in_place {
                 // Open in place
                 editors.left  = find_or_create_editor(buffer_id);
                 editors.active = editors.left;
-                array_add(*editors.floating_editors, editors.left);
             } else if placement == .on_the_side || placement == .right {
                 // Open on the right
                 editors.right  = find_or_create_editor(buffer_id, editors.active);
@@ -557,7 +546,6 @@ editors_open_buffer :: (buffer_id: s64, placement: Editor_Placement = .in_place)
                 editors.active = editors.right;
                 editors.layout = .Double;
                 editors_start_moving_splitter(0.5, start = 1.0);
-                array_add(*editors.floating_editors, editors.right);
             } else {
                 // Open on the left
                 editors.left   = find_or_create_editor(buffer_id, editors.active);
@@ -565,7 +553,6 @@ editors_open_buffer :: (buffer_id: s64, placement: Editor_Placement = .in_place)
                 editors.active = editors.left;
                 editors.layout = .Double;
                 editors_start_moving_splitter(0.5, start = 0.0);
-                array_add(*editors.floating_editors, editors.left);
             }
 
         case .Double;
@@ -579,17 +566,14 @@ editors_open_buffer :: (buffer_id: s64, placement: Editor_Placement = .in_place)
                 // Open on the right (obviously)
                 editors.right  = find_or_create_editor(buffer_id, editors.left);
                 editors.active = editors.right;
-                array_add(*editors.floating_editors, editors.right);
             } else {
                 // Open on the left
                 editors.left   = find_or_create_editor(buffer_id, editors.right);
                 editors.active = editors.left;
-                array_add(*editors.floating_editors, editors.left);
             }
         case .Cow;
             floating_editor := find_or_create_editor(buffer_id);
             editors.active = floating_editor;
-            array_add(*editors.floating_editors, floating_editor);
     }
     buffer := *open_buffers[buffer_id];
     if buffer.num_times_opened < 255 then buffer.num_times_opened += 1;
@@ -3617,8 +3601,6 @@ Editor_State :: struct {
     left:   s64 = -1;
     right:  s64 = -1;
     
-    floating_editors: [..] s64;
-
     expanded := false;  // whether the active editor should be larger
 
     Layout :: enum u8 {
