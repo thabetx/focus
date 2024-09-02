@@ -408,6 +408,9 @@ active_editor_type_char :: (char: u32) {
 
 get_active_editor_and_buffer :: () -> *Editor, *Buffer {
     if editors.layout == .None && !build_panel_is_active() return null, null;
+    if editors.layout == .Cow {
+        return null, null;
+    }
     editor := *open_editors[editors.active];
     buffer := *open_buffers[editor.buffer_id];
     return editor, buffer;
@@ -3617,7 +3620,7 @@ Editor_Placement :: enum {
     on_the_side;
     left;
     right;
-    // floating;
+    floating;
 }
 
 open_buffers_lock: Mutex;  // must hold while adding a new buffer

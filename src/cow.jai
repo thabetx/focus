@@ -16,29 +16,50 @@ Cow_Box :: struct {
     editor_id: s64;
 }
 cow_boxes: [..] Cow_Box;
+inited := false;
 
-init_cow_editors_hardcoded :: () {
+init_cow_editors_hardcoded :: () #expand {
     b1 : Cow_Box = .{
         name = "Cow Rendering",
         file_path = "c:/dev/focus/src/draw.jai",
-        start_line = 245,
-        end_line = 264,
-        rect = .{100, 100, 500, 1000},
-        editor_id = 0, // TODO: actually open an editor for each box
+        start_line = 244,
+        end_line = 261,
+        rect = .{100, 100, 500, 500},
+        editor_id = 1, // TODO: actually open an editor for each box
     };
     b2 : Cow_Box = .{
-        name = "Welcome Screen Rendeing ",
-        file_path = "c:/dev/focus/src/draw.jai",
-        start_line = 98,
-        end_line = 243,
-        rect = .{700, 100, 500, 1000},
-        editor_id = 1, // TODO: actually open an editor for each box
-    };    
+        name = "Cow Init",
+        file_path = "c:/dev/focus/src/cow.jai",
+        start_line = 21,
+        end_line = 56,
+        rect = .{700, 100, 500, 500},
+        editor_id = 2, // TODO: actually open an editor for each box
+    };
+
+    editors_open_file(b1.file_path, .floating);
+    editors_open_file(b2.file_path, .floating);
+
     array_add(*cow_boxes, b1);
     array_add(*cow_boxes, b2);
+    
+    for *cow_boxes {
+        editor := *open_editors[it.editor_id];
+        it.rect.h = xx ((it.end_line-it.start_line+2) * 20);
+        // editor.viewport.top = xx (it.start_line * 20);
+        
+        // cursor := leave_only_original_cursor(editor);
+        // editor.cursor_moved = .jumped;
+        // editor.scroll_to_cursor = .yes;
+        viewport := *editor.viewport;
+        start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line-1) * 20));
+    }
 }
 
 toggle_cow :: () {
+    if inited == false {
+        inited = true;
+        init_cow_editors_hardcoded();
+    }
     if editors.layout != .Cow {
         old_layout = editors.layout;
         editors.layout = .Cow;

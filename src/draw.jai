@@ -61,7 +61,6 @@ draw_frame :: () {
             draw_splitter(splitter_rect, split_x, .editor_splitter);
         case .Cow;
             draw_cow(screen);
-            
     }
 
     maybe_draw_color_preview_panel();
@@ -251,8 +250,9 @@ draw_cow :: (main_area: Rect) {
     
     for cow_boxes {
         world_rect := it.rect;
-        world_rect.x += cow_camera.position.x;
-        world_rect.y += cow_camera.position.y;
+        world_rect.x -= cow_camera.position.x;
+        world_rect.y -= cow_camera.position.y;
+        // draw_rect(world_rect, Color.BACKGROUND_2);
         draw_editor(it.editor_id, world_rect, 0, xx it.editor_id); // are those unique
         editor := *open_editors[it.editor_id];
         buffer := *open_buffers[editor.buffer_id];
