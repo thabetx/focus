@@ -421,6 +421,7 @@ merge_configs :: (dst: *Config, parsed: Parsed_Config) {
     }
     merge_keymaps(*dst.keymap.common,           *parsed.keymap_common);
     merge_keymaps(*dst.keymap.editors,          *parsed.keymap_editors);
+    merge_keymaps(*dst.keymap.cow,              *parsed.keymap_cow);
     merge_keymaps(*dst.keymap.open_file_dialog, *parsed.keymap_open_file_dialog);
     merge_keymaps(*dst.keymap.search_dialog,    *parsed.keymap_search_dialog);
 
@@ -627,6 +628,7 @@ Color_Preview_Popup :: enum {
 Keymap :: struct {
     common:           [] Key_Mapping;
     editors:          [] Key_Mapping;
+    cow:              [] Key_Mapping;
     open_file_dialog: [] Key_Mapping;
     search_dialog:    [] Key_Mapping;
 

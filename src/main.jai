@@ -300,6 +300,15 @@ main :: () {
                 case .theme_dialog;             handled = theme_dialog_handle_event(event);
                 case .language_dialog;          handled = language_dialog_handle_event(event);
             }
+            
+            
+            if !handled {
+                editor, _ := get_active_editor_and_buffer();
+                if editors.layout == .Cow && editor == null {
+                    action := map_event_to_action(event, Action_Cow);
+                    handled = handle_cow_action(action);
+                }
+            }
 
             if !handled {
                 action := map_event_to_action(event, Action_Editors);
@@ -415,11 +424,8 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
 
         case .build_kill_running_command;                       build_kill_running_command();                       return true;
         case .build_clear_output;                               build_clear_output();                               return true;
-        case .toggle_cow;                                       toggle_cow();                                       return true;
-        case .cow_left;                                         cow_left();                                         return true;
-        case .cow_right;                                        cow_right();                                        return true;
-        case .cow_up;                                           cow_up();                                           return true;
-        case .cow_down;                                         cow_down();                                         return true;
+        case .cow_open;                                         cow_open();                                         return true;
+
 
         // TODO: search_in_buffer
         case .search_in_project;
@@ -428,6 +434,16 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
     return false;
 }
 
+handle_cow_action :: (action: Action_Cow) -> handled: bool {
+    if action == {
+        case .cow_close;     cow_close();   return true;
+        case .cow_left;      cow_left();    return true;
+        case .cow_right;     cow_right();   return true;
+        case .cow_up;        cow_up();      return true;
+        case .cow_down;      cow_down();    return true;
+    }
+    return false;
+}
 
 maybe_execute_a_build_command :: (action: Action_Build) -> handled: bool {
     if action == INVALID_KEYMAP_ACTION return false;

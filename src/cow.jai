@@ -52,22 +52,26 @@ init_cow_editors_hardcoded :: () #expand {
         // editor.scroll_to_cursor = .yes;
         viewport := *editor.viewport;
         start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line-1) * 20));
+        // @COW move the cursor as well for that editor
     }
 }
 
-toggle_cow :: () {
+cow_open :: () {
     if inited == false {
         inited = true;
         init_cow_editors_hardcoded();
+         make_editor_active(-1);        
     }
     if editors.layout != .Cow {
         old_layout = editors.layout;
         editors.layout = .Cow;
-    } else {
+    }
+}
+cow_close :: () {
+    if editors.layout == .Cow {
         editors.layout = old_layout;
     }
 }
-
 cow_left :: () {
     cow_camera.position.x -= cow_camera.move_speed;
 }

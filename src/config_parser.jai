@@ -18,6 +18,7 @@ CONFIG_SECTIONS :: Config_Section.[
         name = "keymap",
         subsections = .[
             "editors",
+            "cow",
             "open file dialog",
             "search dialog",
             "common",
@@ -137,6 +138,7 @@ parse_config :: (name: string, file_path: string, file_data: string, for_highlig
 
     // Mix the common key mappings into every keymap to support common actions
     array_add(*result.config.keymap_editors,          ..result.config.keymap_common);
+    // @COW: what is this? I think I don't need it
     array_add(*result.config.keymap_open_file_dialog, ..result.config.keymap_common);
     array_add(*result.config.keymap_search_dialog,    ..result.config.keymap_common);
 
@@ -974,6 +976,7 @@ parse_keymap_line :: (using parser: *Config_Parser, line: string) -> success: bo
                 subsection_actions := Subsection_Actions.[
                     .{ "[common]",           ACTIONS_COMMON },
                     .{ "[editors]",          ACTIONS_EDITORS },
+                    .{ "[cow]",              ACTIONS_COW },
                     .{ "[open file dialog]", ACTIONS_OPEN_FILE_DIALOG },
                     .{ "[search dialog]",    ACTIONS_SEARCH_DIALOG },
                 ];
@@ -992,6 +995,7 @@ parse_keymap_line :: (using parser: *Config_Parser, line: string) -> success: bo
     if active_subsection == {
         case .keymap_common;            map_action(action_name, key_sequence, ACTIONS_COMMON,           *result.config.keymap_common,           "[common]");
         case .keymap_editors;           map_action(action_name, key_sequence, ACTIONS_EDITORS,          *result.config.keymap_editors,          "[editors]");
+        case .keymap_cow;               map_action(action_name, key_sequence, ACTIONS_COW,              *result.config.keymap_cow,              "[cow]");
         case .keymap_open_file_dialog;  map_action(action_name, key_sequence, ACTIONS_OPEN_FILE_DIALOG, *result.config.keymap_open_file_dialog, "[open file dialog]");
         case .keymap_search_dialog;     map_action(action_name, key_sequence, ACTIONS_SEARCH_DIALOG,    *result.config.keymap_search_dialog,    "[search dialog]");
     }
@@ -1182,6 +1186,7 @@ Parsed_Config :: struct {
     // Keymap
     keymap_common:           [..] Key_Mapping;
     keymap_editors:          [..] Key_Mapping;
+    keymap_cow:              [..] Key_Mapping;
     keymap_open_file_dialog: [..] Key_Mapping;
     keymap_search_dialog:    [..] Key_Mapping;
 

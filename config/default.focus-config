@@ -286,12 +286,6 @@ Ctrl-B                      toggle_build_panel
 
 F11                         toggle_fullscreen
 
-F1                          toggle_cow
-A                           cow_left
-D                           cow_right
-W                           cow_up
-S                           cow_down
-
 # {Shift}- means shift is optional, the key combination will still be matched.
 # NOTE: in this editor the Shift key is hard-coded to extend selection when held
 {Shift}-ArrowUp             move_up
@@ -332,6 +326,15 @@ F8                          go_to_next_build_error
 Ctrl-F8                     go_to_next_build_error_on_the_side
 Shift-F8                    go_to_previous_build_error
 Shift-Ctrl-F8               go_to_previous_build_error_on_the_side
+
+F1                          cow_open
+
+[cow]
+F1                          cow_close
+A                           cow_left
+D                           cow_right
+W                           cow_up
+S                           cow_down
 
 
 [[style]]

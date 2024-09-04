@@ -248,6 +248,8 @@ draw_cow :: (main_area: Rect) {
     Simp.prepare_text(font_ui_big, text);
     Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
     
+    if mouse.left.just_pressed make_editor_active(-1);
+
     for cow_boxes {
         world_rect := it.rect;
         world_rect.x -= cow_camera.position.x;

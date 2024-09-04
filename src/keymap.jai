@@ -202,6 +202,8 @@ get_keymap_for_action_type :: ($Action: Type) -> [] Key_Mapping #expand {
         return config.keymap.common;
     } else #if Action == Action_Editors {
         return config.keymap.editors;
+    } else #if Action == Action_Cow {
+        return config.keymap.cow;
     } else #if Action == Action_Open_File_Dialog {
         return config.keymap.open_file_dialog;
     } else #if Action == Action_Search_Dialog {
@@ -255,6 +257,7 @@ Key_Combo :: struct {
 
     define_enum(*b, "Action_Common",           ACTIONS_COMMON);
     define_enum(*b, "Action_Editors",          ACTIONS_EDITORS);
+    define_enum(*b, "Action_Cow",              ACTIONS_COW);
     define_enum(*b, "Action_Open_File_Dialog", ACTIONS_OPEN_FILE_DIALOG);
     define_enum(*b, "Action_Search_Dialog",    ACTIONS_SEARCH_DIALOG);
 
@@ -353,14 +356,18 @@ ACTIONS_COMMON :: string.[
     "go_to_previous_build_error",
     "go_to_previous_build_error_on_the_side",
     
-    "toggle_cow",
+    "cow_open",
+];
+
+ACTIONS_COW  :: #run arrays_concat(ACTIONS_COMMON, string.[
+    "cow_close",
     "cow_left",
     "cow_right",
     "cow_up",
     "cow_down",
     "cow_zoom_in",
     "cow_zoom_out",
-];
+]);
 
 ACTIONS_EDITORS :: #run arrays_concat(ACTIONS_COMMON, string.[
     "select_word_or_create_another_cursor",

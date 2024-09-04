@@ -190,13 +190,7 @@ base_commands := #run -> [] Command {
 
         cmd( "Choose Language Syntax",            .choose_language,                  .Single ),
 
-        cmd( "Toggle Cow",                        .toggle_cow,                       .None  ),
-        cmd( "Cow Left",                          .cow_left,                         .Cow   ),
-        cmd( "Cow Right",                         .cow_right,                        .Cow  ),
-        cmd( "Cow Up",                            .cow_up,                           .Cow   ),
-        cmd( "Cow Down",                          .cow_down,                         .Cow   ),
-        cmd( "Cow Zoom In",                       .cow_zoom_in,                      .Cow   ),
-        cmd( "Cow Zoom Out",                      .cow_zoom_out,                     .Cow   ),
+        cmd( "Open Cow",                          .cow_open,                         .None   ),
     ];
 
     linux_commands := Command.[
