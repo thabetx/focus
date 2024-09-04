@@ -254,7 +254,15 @@ draw_cow :: (main_area: Rect) {
         world_rect := it.rect;
         world_rect.x -= cow_camera.position.x;
         world_rect.y -= cow_camera.position.y;
-        // draw_rect(world_rect, Color.BACKGROUND_2);
+        if editors.active == it.editor_id {
+            expanded_rect := world_rect;
+            expanded_rect.w += 6;
+            expanded_rect.h += 6;
+            expanded_rect.x -= 3;
+            expanded_rect.y -= 3;
+            draw_rounded_rect(expanded_rect, Color.UI_WARNING);
+        }
+            
         draw_editor(it.editor_id, world_rect, 0, xx it.editor_id); // are those unique
         editor := *open_editors[it.editor_id];
         buffer := *open_buffers[editor.buffer_id];
