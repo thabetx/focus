@@ -1471,6 +1471,24 @@ find_or_create_editor :: (buffer_id: s64, unwanted_existing_editor: s64 = -1) ->
     return editor_id, true;
 }
 
+find_or_create_editor2 :: (buffer_id: s64) -> editor_id: s64, created: bool {
+    assert(buffer_id >= 0 && buffer_id < open_buffers.count, "Attempt to create editor for nonexistent buffer");
+    editor_id := open_editors.count;
+    editor := array_add(*open_editors);
+    editor.buffer_id = buffer_id;
+    array_add(*editor.cursors, Cursor.{});
+
+    if config.settings.line_wrap_is_on_by_default {
+        editor.line_wrap = .to_enable;
+        redraw_requested = true;
+    }
+
+    open_buffers[buffer_id].num_editors_open += 1;
+    assert(open_buffers[buffer_id].num_editors_open <= 2);
+
+    return editor_id, true;
+}
+
 new_edit_group :: (buffer: *Buffer, editor: *Editor) {
     if buffer.edits.count == 0 return;
 

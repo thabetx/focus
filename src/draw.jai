@@ -243,10 +243,10 @@ draw_welcome_screen :: (main_area: Rect) {
 
 draw_cow :: (main_area: Rect) {
     draw_rect(main_area, Color.BACKGROUND_4);
-    text := "Welcome to cow mode!";
+    // text := "Welcome to cow mode!";
     
-    Simp.prepare_text(font_ui_big, text);
-    Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
+    // Simp.prepare_text(font_ui_big, text);
+    // Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
     
     if mouse.left.just_pressed make_editor_active(-1);
 
