@@ -238,35 +238,67 @@ draw_welcome_screen :: (main_area: Rect) {
             y -= line_height;
         }
     }
-
 }
+
+held_editor_id : s64 = -1;
 
 draw_cow :: (main_area: Rect) {
     draw_rect(main_area, Color.BACKGROUND_4);
-    // text := "Welcome to cow mode!";
-    
-    // Simp.prepare_text(font_ui_big, text);
-    // Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
     
     if mouse.left.just_pressed make_editor_active(-1);
 
-    for cow_boxes {
+    for *cow_boxes {
         world_rect := it.rect;
         world_rect.x -= cow_camera.position.x;
         world_rect.y -= cow_camera.position.y;
+        
+        header_rect := world_rect;
+        header_rect.h = 30;
+        header_rect.y = world_rect.y + world_rect.h;
+        
+        if mouse.left.just_pressed {
+            if mouse_pointer_is_within(header_rect) {
+                make_editor_active(it.editor_id);
+                held_editor_id = it.editor_id;
+            }
+        }
+        
+        if mouse.left.just_released {
+            held_editor_id = -1;
+        }
+        
+        if mouse.left.is_dragging && held_editor_id == it.editor_id {
+            it.rect.x += mouse.delta.x;
+            it.rect.y += mouse.delta.y;
+            print("delta: %\n", mouse.delta);
+        }
+        
         if editors.active == it.editor_id {
             expanded_rect := world_rect;
             expanded_rect.w += 6;
             expanded_rect.h += 6;
             expanded_rect.x -= 3;
             expanded_rect.y -= 3;
+            expanded_rect.h += 30;
             draw_rounded_rect(expanded_rect, Color.UI_WARNING);
         }
-            
-        draw_editor(it.editor_id, world_rect, 0, xx it.editor_id); // are those unique
-        editor := *open_editors[it.editor_id];
-        buffer := *open_buffers[editor.buffer_id];
-        draw_file_info(buffer, 0, 0, .{world_rect.x, world_rect.y + world_rect.h + 10});
+
+        draw_rect(header_rect, Color.SELECTION_ACTIVE);
+        draw_editor(it.editor_id, world_rect, 0, xx it.editor_id);
+        {
+            width := Simp.prepare_text(font_ui_bold, it.name);
+            Simp.draw_prepared_text(font_ui_bold, xx header_rect.x + 10, xx header_rect.y + 10, color = xx Color.UI_DEFAULT);
+
+            editor := *open_editors[it.editor_id];
+            buffer := *open_buffers[editor.buffer_id];
+            draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
+        }
+    }
+
+    active_editor, _ := get_active_editor_and_buffer();
+    if mouse.left.is_dragging && held_editor_id == -1 && active_editor == null {
+        cow_camera.position.x -= mouse.delta.x;
+        cow_camera.position.y -= mouse.delta.y;
     }
 }
 

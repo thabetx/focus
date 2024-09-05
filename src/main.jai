@@ -557,6 +557,7 @@ update_mouse_state :: () {
     mouse.pointer.y = xx (window_height - y);
     mouse.moved_this_frame = (mouse.pointer != mouse.previous_position);
     if mouse.moved_this_frame {
+        mouse.delta = mouse.pointer - mouse.previous_position;
         platform_show_cursor(true);
     }
     mouse.previous_position = mouse.pointer;
@@ -754,6 +755,7 @@ Mouse_State :: struct {
     pointer: Vector2;
     previous_position: Vector2;
     moved_this_frame: bool;
+    delta: Vector2;
     scroll_x_delta: s32;
     scroll_y_delta: s32;
     smooth_scroll: bool;
