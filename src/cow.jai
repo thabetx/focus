@@ -1,4 +1,5 @@
 // cow 3
+// cow 3 The COW State
 old_layout : Editor_State.Layout = .None;
 Cow_Camera :: struct {
     position : Vector2 = .{20, 100};
@@ -26,7 +27,7 @@ cow_save :: () {
     builder: String_Builder;
     builder.allocator = temp;
     init_string_builder(*builder);
-    for cow_boxes print_to_builder(*builder, "% % %\n", it.id, it.rect.x, it.rect.y);
+    for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
     write_entire_file("cow.txt", builder_to_string(*builder));
 }
 
@@ -47,7 +48,11 @@ cow_load :: () {
 }
 
 cow_scan :: () {
-    file_path := "c:/dev/focus/src/cow.jai";
+    file_paths := string.[
+        "c:/dev/focus/src/cow.jai",
+        "c:/dev/focus/src/draw.jai",
+    ];
+    for file_path :file_paths {
     cow_code_file := read_entire_file(file_path,, temp);
     lines := split(cow_code_file, "\n",, allocator = temp);
     for line: lines {
@@ -61,13 +66,13 @@ cow_scan :: () {
         for *box: cow_boxes {
             if box.id != id continue;
             found = true;
-            // if it.end_line == -1 there is something wrong
-            box.end_line = line_number-1;
-            for box.start_line..box.end_line {
-                box.rect.w = max(box.rect.w, xx (lines[it].count * 9.5));
+                // if it.end_line == -1 there is something wrong
+                box.end_line = line_number-1;
+                for box.start_line..box.end_line {
+                    box.rect.w = max(box.rect.w, xx (lines[it].count));
+                }
+                break;
             }
-            break;
-        }
         if found == false {
             box : Cow_Box;
             box.id = id;
@@ -75,13 +80,14 @@ cow_scan :: () {
             box.name = copy_string(rem);
             box.start_line = line_number+1;
             box.file_path = file_path;
-            array_add(*cow_boxes, box);
+                array_add(*cow_boxes, box);
+            }
         }
     }
     for *cow_boxes {
         buffer_id := find_or_create_buffer(it.file_path);
         it.editor_id = find_or_create_editor2(buffer_id);
-        it.rect.h = xx ((it.end_line-it.start_line+1) * 20);
+        it.rect.h = xx ((it.end_line-it.start_line+3));
         editor := *open_editors[it.editor_id];
         viewport := *editor.viewport;
         start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+0.5) * 20));
@@ -89,7 +95,7 @@ cow_scan :: () {
 }
 // cow 1
 
-// cow 2
+// cow 2 COW Commands
 cow_open :: () {
     if inited == false {
         inited = true;
