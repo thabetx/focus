@@ -21,7 +21,7 @@ cow_boxes: [..] Cow_Box;
 inited := false;
 // cow 3
 
-// cow 1
+// cow 1 Serializing and scanning the boxes
 cow_save :: () {
     builder: String_Builder;
     builder.allocator = temp;
@@ -50,11 +50,11 @@ cow_scan :: () {
     file_path := "c:/dev/focus/src/cow.jai";
     cow_code_file := read_entire_file(file_path,, temp);
     lines := split(cow_code_file, "\n",, allocator = temp);
-    for lines {
-        parts := split(it, " ",, allocator = temp);
-        if parts.count != 3 continue;
-        if parts[0] != "//" || parts[1] != "cow" continue;
-        id, ok := to_integer(parts[2]);
+    for line: lines {
+        trimmed := trim_left(line);
+        if begins_with(trimmed, "// cow") == false continue;
+        advance(*trimmed, 6);
+        id, ok, rem := to_integer(trimmed);
         if ok == false continue;
         line_number := it_index;
         found: bool = false;
@@ -67,6 +67,7 @@ cow_scan :: () {
         if found == false {
             box : Cow_Box;
             box.id = id;
+            box.name = copy_string(rem);
             box.start_line = line_number+1;
             box.file_path = file_path;
             array_add(*cow_boxes, box);
