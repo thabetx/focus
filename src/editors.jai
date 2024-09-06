@@ -1484,7 +1484,6 @@ find_or_create_editor2 :: (buffer_id: s64) -> editor_id: s64, created: bool {
     }
 
     open_buffers[buffer_id].num_editors_open += 1;
-    assert(open_buffers[buffer_id].num_editors_open <= 2);
 
     return editor_id, true;
 }

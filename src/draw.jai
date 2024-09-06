@@ -270,7 +270,6 @@ draw_cow :: (main_area: Rect) {
         if mouse.left.is_dragging && held_editor_id == it.editor_id {
             it.rect.x += mouse.delta.x;
             it.rect.y += mouse.delta.y;
-            print("delta: %\n", mouse.delta);
         }
         
         if editors.active == it.editor_id {
