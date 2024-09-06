@@ -58,15 +58,20 @@ cow_scan :: () {
         if ok == false continue;
         line_number := it_index;
         found: bool = false;
-        for *cow_boxes {
-            if it.id != id continue;
+        for *box: cow_boxes {
+            if box.id != id continue;
             found = true;
             // if it.end_line == -1 there is something wrong
-            it.end_line = line_number-1;
+            box.end_line = line_number-1;
+            for box.start_line..box.end_line {
+                box.rect.w = max(box.rect.w, xx (lines[it].count * 9.5));
+            }
+            break;
         }
         if found == false {
             box : Cow_Box;
             box.id = id;
+            box.rect.w = 100;
             box.name = copy_string(rem);
             box.start_line = line_number+1;
             box.file_path = file_path;
@@ -77,7 +82,6 @@ cow_scan :: () {
         buffer_id := find_or_create_buffer(it.file_path);
         it.editor_id = find_or_create_editor2(buffer_id);
         it.rect.h = xx ((it.end_line-it.start_line+1) * 20);
-        it.rect.w = 500;
         editor := *open_editors[it.editor_id];
         viewport := *editor.viewport;
         start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+0.5) * 20));

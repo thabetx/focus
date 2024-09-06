@@ -285,12 +285,15 @@ draw_cow :: (main_area: Rect) {
         draw_rect(header_rect, Color.SELECTION_ACTIVE);
         draw_editor(it.editor_id, world_rect, 0, xx it.editor_id);
         {
-            width := Simp.prepare_text(font_ui_bold, it.name);
-            Simp.draw_prepared_text(font_ui_bold, xx header_rect.x + 10, xx header_rect.y + 10, color = xx Color.UI_DEFAULT);
-
+            
             editor := *open_editors[it.editor_id];
             buffer := *open_buffers[editor.buffer_id];
-            draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
+            width := Simp.prepare_text(font_ui_bold, it.name);
+            Simp.draw_prepared_text(font_ui_bold, xx header_rect.x + 7, xx header_rect.y + 10, color = xx Color.UI_DEFAULT);
+            Simp.prepare_text(font_ui_small, get_buffer_name(buffer));
+            Simp.draw_prepared_text(font_ui_small, xx header_rect.x + width + 10, xx header_rect.y + 10, color = xx Color.UI_DEFAULT);
+
+            // draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
         }
     }
 
