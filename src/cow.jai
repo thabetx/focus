@@ -1,11 +1,11 @@
 // cow 3
 // cow 3 The COW State
 old_layout : Editor_State.Layout = .None;
+old_zoom: float;
 Cow_Camera :: struct {
     position : Vector2 = .{20, 100};
-    zoom: float;
+    zoom : float;
     move_speed: float = 20;
-    zoom_speed: float = 20;
 }
 cow_camera : Cow_Camera;
 
@@ -22,17 +22,28 @@ cow_boxes: [..] Cow_Box;
 inited := false;
 // cow 3
 
+cow_canvas_filepath :: "cow.txt";
+cow_state_filepath :: "cow_state.txt";
+
 // cow 1 Serializing and scanning the boxes
 cow_save :: () {
     builder: String_Builder;
     builder.allocator = temp;
     init_string_builder(*builder);
     for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
-    write_entire_file("cow.txt", builder_to_string(*builder));
+    write_entire_file(cow_canvas_filepath, builder_to_string(*builder));
+    {
+        builder: String_Builder;
+        builder.allocator = temp;
+        init_string_builder(*builder);
+        using cow_camera;
+        print_to_builder(*builder, "% % %", cast(int)position.x, cast(int)position.y, cast(int)zoom);
+        write_entire_file(cow_state_filepath, builder_to_string(*builder));
+    }
 }
 
 cow_load :: () {
-    state := read_entire_file("cow.txt",, temp);
+    state := read_entire_file(cow_canvas_filepath,, temp);
     lines := split(state, "\n",, allocator = temp);
     for lines {
         id, x, y: int;
@@ -45,6 +56,16 @@ cow_load :: () {
             }
         }
     }
+
+    {
+        state := read_entire_file(cow_state_filepath,, temp);
+        x, y, zoom : int;
+        ok := scan2(state, "% % %", *x, *y, *zoom);
+        if ok {
+            cow_camera.position = .{xx x, xx y};
+            cow_camera.zoom = xx zoom;
+        }
+    }
 }
 
 cow_scan :: () {
@@ -52,9 +73,10 @@ cow_scan :: () {
         "c:/dev/focus/src/cow.jai",
         "c:/dev/focus/src/draw.jai",
     ];
+    
     for file_path :file_paths {
-    cow_code_file := read_entire_file(file_path,, temp);
-    lines := split(cow_code_file, "\n",, allocator = temp);
+        cow_code_file := read_entire_file(file_path,, temp);
+        lines := split(cow_code_file, "\n",, allocator = temp);
     for line: lines {
         trimmed := trim_left(line);
         if begins_with(trimmed, "// cow") == false continue;
@@ -71,15 +93,17 @@ cow_scan :: () {
                 for box.start_line..box.end_line {
                     box.rect.w = max(box.rect.w, xx (lines[it].count));
                 }
+                box.rect.w = min(box.rect.w, 100);
                 break;
             }
-        if found == false {
-            box : Cow_Box;
-            box.id = id;
-            box.rect.w = 100;
-            box.name = copy_string(rem);
-            box.start_line = line_number+1;
-            box.file_path = file_path;
+            if found == false {
+                box : Cow_Box;
+                box.id = id;
+                box.rect.w = 30;
+                box.rect.w = 3;
+                box.name = copy_string(rem);
+                box.start_line = line_number+1;
+                box.file_path = file_path;
                 array_add(*cow_boxes, box);
             }
         }
@@ -87,10 +111,10 @@ cow_scan :: () {
     for *cow_boxes {
         buffer_id := find_or_create_buffer(it.file_path);
         it.editor_id = find_or_create_editor2(buffer_id);
-        it.rect.h = xx ((it.end_line-it.start_line+3));
+        it.rect.h = xx ((it.end_line-it.start_line+1.5));
         editor := *open_editors[it.editor_id];
         viewport := *editor.viewport;
-        start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+0.5) * 20));
+        start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+.5) * 19.6));
     }
 }
 // cow 1
@@ -101,16 +125,23 @@ cow_open :: () {
         inited = true;
         cow_scan();
         cow_load();
-        make_editor_active(-1);        
     }
     if editors.layout != .Cow {
+        make_editor_active(-1);
         old_layout = editors.layout;
         editors.layout = .Cow;
+        old_zoom = xx font_size;
+        font_size = xx cow_camera.zoom;
+        init_fonts_and_dependent_things();
     }
 }
 cow_close :: () {
     if editors.layout == .Cow {
+        make_editor_active(-1);
         editors.layout = old_layout;
+        cow_camera.zoom = xx font_size;
+        font_size = xx old_zoom;
+        init_fonts_and_dependent_things();
     }
     cow_save();
 }
@@ -125,12 +156,6 @@ cow_up :: () {
 }
 cow_down :: () {
     cow_camera.position.y -= cow_camera.move_speed;
-}
-cow_zoom_in :: () {
-    cow_camera.zoom += cow_camera.zoom_speed;
-}
-cow_zoom_out :: () {
-    cow_camera.zoom -= cow_camera.zoom_speed;
 }
 // cow 2
 
@@ -181,7 +206,6 @@ draw_cow :: (main_area: Rect) {
             it.rect.y += mouse.delta.y / scale;
         }
         if editors.active == it.editor_id {
-
             draw_rounded_rect(expanded_rect, Color.UI_WARNING);
         }
         draw_rect(header_rect, Color.SELECTION_ACTIVE);

@@ -408,9 +408,10 @@ active_editor_type_char :: (char: u32) {
 
 get_active_editor_and_buffer :: () -> *Editor, *Buffer {
     if editors.layout == .None && !build_panel_is_active() return null, null;
-    if editors.layout == .Cow {
+    // @cow
+    // if editors.layout == .Cow {
         if editors.active == -1 return null, null;
-    }
+    // }
     editor := *open_editors[editors.active];
     buffer := *open_buffers[editor.buffer_id];
     return editor, buffer;
@@ -1417,7 +1418,7 @@ make_editor_active :: (editor_id: s64) {
     if is_build_panel(editor_id)         then build_panel_on_activate();
 
     editors.active = editor_id;
-    
+
     if editor_id == -1 return; // deactivate the editors
 
     buffer_id := open_editors[editor_id].buffer_id;
@@ -3622,7 +3623,7 @@ Editor_State :: struct {
     active: s64 = -1;
     left:   s64 = -1;
     right:  s64 = -1;
-    
+
     expanded := false;  // whether the active editor should be larger
 
     Layout :: enum u8 {
