@@ -176,34 +176,31 @@ draw_cow :: (main_area: Rect) {
 
     draw_rect(main_area, Color.BACKGROUND_4);
     if mouse.left.just_pressed make_editor_active(-1);
-    // scale : float = (cast(float)font_size);
-    // @todo doing scaling using width will be wrong, using height will also be wrong?
-    // scale : float = char_size;
-    scale : float = line_height;
-    v_font_scale : float = line_height;
-    h_font_scale : float = char_size;
-    expanded_rect_padding : float = .4*scale;
-    text_padding := scale;
+    y_scale : float = line_height;
+    x_scale : float = char_size;
+    expanded_rect_padding_x : float = .4*x_scale;
+    expanded_rect_padding_y : float = .4*y_scale;
+    text_padding := x_scale;
 
     for *cow_boxes {
         world_rect := it.rect;
-        world_rect.x *= scale;
-        world_rect.y *= scale;
-        world_rect.w *= h_font_scale;
-        world_rect.h *= v_font_scale;
+        world_rect.x *= x_scale;
+        world_rect.y *= y_scale;
+        world_rect.w *= x_scale;
+        world_rect.h *= y_scale;
 
         world_rect.x -= cow_camera.position.x;
         world_rect.y -= cow_camera.position.y;
         
         header_rect := world_rect;
-        header_rect.h = 2*v_font_scale;
+        header_rect.h = 2*y_scale;
         header_rect.y = world_rect.y + world_rect.h;
         
         expanded_rect := world_rect;
-        expanded_rect.w += expanded_rect_padding;
-        expanded_rect.h = world_rect.h + header_rect.h + expanded_rect_padding;
-        expanded_rect.x -= expanded_rect_padding/2;
-        expanded_rect.y -= expanded_rect_padding/2;
+        expanded_rect.w += expanded_rect_padding_x;
+        expanded_rect.h = world_rect.h + header_rect.h + expanded_rect_padding_y;
+        expanded_rect.x -= expanded_rect_padding_x/2;
+        expanded_rect.y -= expanded_rect_padding_y/2;
         
         if mouse.left.just_pressed {
             if mouse_pointer_is_within(header_rect) {
@@ -217,8 +214,8 @@ draw_cow :: (main_area: Rect) {
         }
         
         if mouse.left.is_dragging && held_editor_id == it.editor_id {
-            it.rect.x += mouse.delta.x / scale;
-            it.rect.y += mouse.delta.y / scale;
+            it.rect.x += mouse.delta.x / x_scale;
+            it.rect.y += mouse.delta.y / y_scale;
         }
         if editors.active == it.editor_id {
             draw_rounded_rect(expanded_rect, Color.UI_WARNING);
