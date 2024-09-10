@@ -408,10 +408,10 @@ active_editor_type_char :: (char: u32) {
 
 get_active_editor_and_buffer :: () -> *Editor, *Buffer {
     if editors.layout == .None && !build_panel_is_active() return null, null;
-    // @cow
-    // if editors.layout == .Cow {
+    if editors.layout == .Cow {
         if editors.active == -1 return null, null;
-    // }
+    }
+    
     editor := *open_editors[editors.active];
     buffer := *open_buffers[editor.buffer_id];
     return editor, buffer;

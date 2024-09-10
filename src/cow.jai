@@ -2,6 +2,7 @@
 // cow 3 The COW State
 old_layout : Editor_State.Layout = .None;
 old_zoom: float;
+old_editor: s64;
 Cow_Camera :: struct {
     position : Vector2 = .{20, 100};
     zoom : float;
@@ -127,6 +128,7 @@ cow_open :: () {
         cow_load();
     }
     if editors.layout != .Cow {
+        old_editor = editors.active;
         make_editor_active(-1);
         old_layout = editors.layout;
         editors.layout = .Cow;
@@ -137,7 +139,7 @@ cow_open :: () {
 }
 cow_close :: () {
     if editors.layout == .Cow {
-        make_editor_active(-1);
+        make_editor_active(old_editor);
         editors.layout = old_layout;
         cow_camera.zoom = xx font_size;
         font_size = xx old_zoom;
