@@ -33,12 +33,12 @@ cow_save :: () {
     init_string_builder(*builder);
     for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
     write_entire_file(cow_canvas_filepath, builder_to_string(*builder));
+    
     {
         builder: String_Builder;
         builder.allocator = temp;
         init_string_builder(*builder);
-        using cow_camera;
-        print_to_builder(*builder, "% % %", cast(int)position.x, cast(int)position.y, cast(int)zoom);
+        print_to_builder(*builder, "% % %", cast(int)cow_camera.position.x, cast(int)cow_camera.position.y, cast(int)cow_camera.zoom);
         write_entire_file(cow_state_filepath, builder_to_string(*builder));
     }
 }
@@ -88,20 +88,22 @@ cow_scan :: () {
         found: bool = false;
         for *box: cow_boxes {
             if box.id != id continue;
-            found = true;
+                found = true;
                 // if it.end_line == -1 there is something wrong
                 box.end_line = line_number-1;
+                box.rect.h = xx ((box.end_line-box.start_line+1));
                 for box.start_line..box.end_line {
-                    box.rect.w = max(box.rect.w, xx (lines[it].count));
+                    box.rect.w = max(box.rect.w, xx (lines[it].count+3)); // +3 to not have last char exactly on edge
                 }
+                // do we need this?
                 box.rect.w = min(box.rect.w, 100);
+
                 break;
             }
             if found == false {
                 box : Cow_Box;
                 box.id = id;
-                box.rect.w = 30;
-                box.rect.w = 3;
+                box.rect.w = 50;
                 box.name = copy_string(rem);
                 box.start_line = line_number+1;
                 box.file_path = file_path;
@@ -109,21 +111,12 @@ cow_scan :: () {
             }
         }
     }
-    for *cow_boxes {
-        buffer_id := find_or_create_buffer(it.file_path);
-        it.editor_id = find_or_create_editor2(buffer_id);
-        it.rect.h = xx ((it.end_line-it.start_line+1.5));
-        editor := *open_editors[it.editor_id];
-        viewport := *editor.viewport;
-        start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+.5) * 19.6));
-    }
 }
 // cow 1
 
 // cow 2 COW Commands
 cow_open :: () {
     if inited == false {
-        inited = true;
         cow_scan();
         cow_load();
     }
@@ -136,6 +129,20 @@ cow_open :: () {
         font_size = xx cow_camera.zoom;
         init_fonts_and_dependent_things();
     }
+
+    // This could be done when loading, but the font size won't be correct
+    if inited == false {
+        for *cow_boxes {
+            buffer_id := find_or_create_buffer(it.file_path);
+            it.editor_id = find_or_create_editor2(buffer_id);
+            editor := *open_editors[it.editor_id];
+            viewport := *editor.viewport;
+            // the 0.5 is to hide any part of the start-1 line
+            start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+.5) * line_height));
+        }
+    }
+    inited = true;
+
 }
 cow_close :: () {
     if editors.layout == .Cow {
@@ -164,11 +171,17 @@ cow_down :: () {
 
 // cow 5 Rendering
 draw_cow :: (main_area: Rect) {
+    // @hack
+    cow_camera.zoom = xx font_size;
+
     draw_rect(main_area, Color.BACKGROUND_4);
     if mouse.left.just_pressed make_editor_active(-1);
-    scale : float = (cast(float)font_size);
-    v_font_scale : float = scale * 1.4;
-    h_font_scale : float = scale * .66;
+    // scale : float = (cast(float)font_size);
+    // @todo doing scaling using width will be wrong, using height will also be wrong?
+    // scale : float = char_size;
+    scale : float = line_height;
+    v_font_scale : float = line_height;
+    h_font_scale : float = char_size;
     expanded_rect_padding : float = .4*scale;
     text_padding := scale;
 
