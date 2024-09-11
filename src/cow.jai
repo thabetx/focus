@@ -1,4 +1,3 @@
-// cow 3
 // cow 3 The COW State
 old_layout : Editor_State.Layout = .None;
 old_zoom: float;
@@ -78,16 +77,16 @@ cow_scan :: () {
     for file_path :file_paths {
         cow_code_file := read_entire_file(file_path,, temp);
         lines := split(cow_code_file, "\n",, allocator = temp);
-    for line: lines {
-        trimmed := trim_left(line);
-        if begins_with(trimmed, "// cow") == false continue;
-        advance(*trimmed, 6);
-        id, ok, rem := to_integer(trimmed);
-        if ok == false continue;
-        line_number := it_index;
-        found: bool = false;
-        for *box: cow_boxes {
-            if box.id != id continue;
+        for line: lines {
+            trimmed := trim_left(line);
+            if begins_with(trimmed, "// cow") == false continue;
+            advance(*trimmed, 6);
+            id, ok, rem := to_integer(trimmed);
+            if ok == false continue;
+            line_number := it_index;
+            found: bool = false;
+            for *box: cow_boxes {
+                if box.id != id continue;
                 found = true;
                 // if it.end_line == -1 there is something wrong
                 box.end_line = line_number-1;
