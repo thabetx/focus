@@ -257,10 +257,18 @@ draw_cow :: (main_area: Rect) {
                 if hovered_box_index == -1 {
                     state = .NONE;
                     do_input();
-                } else if mouse.left.just_double_clicked {
-                    if hovering_header == false {
-                        make_editor_active(cow_boxes[hovered_box_index].editor_id);
-                        edited_box_index = hovered_box_index;
+                } else {
+                    // make the clicked box last in array so it gets rendered on top of others
+                    if mouse.left.just_pressed {
+                        box := cow_boxes[hovered_box_index];
+                        array_ordered_remove_by_index(*cow_boxes, hovered_box_index);
+                        array_add(*cow_boxes, box);
+                        hovered_box_index = cow_boxes.count - 1;
+                    }
+                    if mouse.left.just_double_clicked {
+                        if hovering_header == false {
+                            make_editor_active(cow_boxes[hovered_box_index].editor_id);
+                            edited_box_index = hovered_box_index;
                         state = .EDITING;
                         do_input();
                     } else {
@@ -270,17 +278,17 @@ draw_cow :: (main_area: Rect) {
                         // editor := *open_editors[editor_id];
                         // viewport := *editor.viewport;
                         // // the 0.5 is to hide any part of the start-1 line
-                        // start_animation(*viewport.scroll_y, viewport.top, xx ((cow_boxes[hovered_box_index].start_line+.5) * line_height));
-                        // make_editor_active(editor_id);
-                    }                    
-
-                } else if mouse.left.just_pressed {
-                    held_box_index = hovered_box_index;
-                    state = .DRAGGING_EDITOR;
-                    do_input();
-                } else if mouse.middle.just_pressed {
-                    state = .DRAGGING_CAMERA;
-                    do_input();
+                            // start_animation(*viewport.scroll_y, viewport.top, xx ((cow_boxes[hovered_box_index].start_line+.5) * line_height));
+                            // make_editor_active(editor_id);
+                        }                    
+                    } else if mouse.left.just_pressed {
+                        held_box_index = hovered_box_index;
+                        state = .DRAGGING_EDITOR;
+                        do_input();
+                    } else if mouse.middle.just_pressed {
+                        state = .DRAGGING_CAMERA;
+                        do_input();
+                    }
                 }
             case .DRAGGING_CAMERA;
                 if mouse.middle.just_released || mouse.left.just_released {
