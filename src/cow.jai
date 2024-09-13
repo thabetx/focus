@@ -190,6 +190,21 @@ draw_cow :: (main_area: Rect) {
     // @hack
     cow_camera.zoom = xx font_size;
     
+    if y_scale != 0 && x_scale != 0 && (y_scale != line_height || x_scale != char_size) {
+        old_x_scale := x_scale;
+        old_y_scale := y_scale;
+        new_x_scale := char_size;
+        new_y_scale := line_height;
+        zoom_target := mouse.pointer;
+        distance_from_circle : Vector2 = zoom_target + cow_camera.position;
+        old_distance : Vector2 = .{distance_from_circle.x * old_x_scale, distance_from_circle.y * old_y_scale};
+        new_distance : Vector2 = .{distance_from_circle.x * new_x_scale, distance_from_circle.y * new_y_scale};
+        shift := new_distance - old_distance;
+        shift.x /= old_x_scale;
+        shift.y /= old_y_scale;
+        cow_camera.position += Vector2.{shift.x, shift.y};
+    }
+
     draw_rect(main_area, Color.BACKGROUND_4);
     x_scale = char_size;
     y_scale = line_height;
