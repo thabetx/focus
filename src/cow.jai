@@ -191,8 +191,8 @@ draw_cow :: (main_area: Rect) {
     cow_camera.zoom = xx font_size;
     
     draw_rect(main_area, Color.BACKGROUND_4);
-    y_scale = line_height;
     x_scale = char_size;
+    y_scale = line_height;
     expanded_rect_padding_x : float = .6*x_scale;
     expanded_rect_padding_y : float = .6*y_scale;
     text_padding := x_scale;
