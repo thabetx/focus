@@ -240,9 +240,6 @@ draw_welcome_screen :: (main_area: Rect) {
     }
 }
 
-held_editor_id : s64 = -1;
-
-
 draw_user_messages :: (main_area: Rect, status_bar_height: float) {
     user_messages := get_user_messages(frame_time);
     if !user_messages return;
@@ -738,7 +735,11 @@ coords_from_mouse_position :: (using editor: Editor, rect: Rect) -> Coords {
     return .{ line = xx (mouse_pos.y / line_height), col = xx ((mouse_pos.x / char_x_advance) + 0.5) };
 }
 
-draw_editor :: (editor_id: s64, main_area: Rect, status_bar_height: float, ui_id: Ui_Id, total_editor_area := Rect.{}) {
+draw_editor :: (editor_id: s64, main_area: Rect, status_bar_height: float, ui_id: Ui_Id, total_editor_area := Rect.{}, no_input :bool = false) {
+    old_mouse := mouse;
+    if no_input mouse = .{};
+    defer if no_input mouse = old_mouse;
+
     as_build_panel := is_build_panel(editor_id);
 
     using editor := *open_editors[editor_id];

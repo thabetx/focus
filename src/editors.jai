@@ -576,8 +576,6 @@ editors_open_buffer :: (buffer_id: s64, placement: Editor_Placement = .in_place)
                 editors.active = editors.left;
             }
         case .Cow;
-            floating_editor := find_or_create_editor(buffer_id);
-            editors.active = floating_editor;
     }
     buffer := *open_buffers[buffer_id];
     if buffer.num_times_opened < 255 then buffer.num_times_opened += 1;
