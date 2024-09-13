@@ -193,8 +193,8 @@ draw_cow :: (main_area: Rect) {
     draw_rect(main_area, Color.BACKGROUND_4);
     y_scale = line_height;
     x_scale = char_size;
-    expanded_rect_padding_x : float = .4*x_scale;
-    expanded_rect_padding_y : float = .4*y_scale;
+    expanded_rect_padding_x : float = .6*x_scale;
+    expanded_rect_padding_y : float = .6*y_scale;
     text_padding := x_scale;
 
     hovering_header = false;
@@ -219,9 +219,13 @@ draw_cow :: (main_area: Rect) {
         expanded_rect.x -= expanded_rect_padding_x/2;
         expanded_rect.y -= expanded_rect_padding_y/2;
         
+        all_rect := world_rect;
+        all_rect.h = world_rect.h + header_rect.h;
+        
         if mouse_pointer_is_within(header_rect) hovering_header = true;
         if mouse_pointer_is_within(expanded_rect) hovered_box_index = it_index;
 
+        draw_rounded_rect_with_shadow(all_rect, Color.BACKGROUND_4);
         if editors.active == it.editor_id draw_rounded_rect(expanded_rect, Color.UI_WARNING);
         draw_rect(header_rect, Color.SELECTION_ACTIVE);
         draw_editor(it.editor_id, world_rect, 0, xx it.editor_id, .{}, editors.active != it.editor_id);
