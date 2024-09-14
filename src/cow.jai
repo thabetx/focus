@@ -69,13 +69,10 @@ cow_load :: () {
 }
 
 cow_scan :: () {
-    file_paths := string.[
-        "c:/dev/focus/src/cow.jai",
-        "c:/dev/focus/src/draw.jai",
-    ];
+    file_paths := open_buffers;
 
     for file_path :file_paths {
-        cow_code_file := read_entire_file(file_path,, temp);
+        cow_code_file := read_entire_file(file_path.file.full_path,, temp);
         lines := split(cow_code_file, "\n",, allocator = temp);
         for line: lines {
             trimmed := trim_left(line);
@@ -105,7 +102,7 @@ cow_scan :: () {
                 box.rect.w = 50;
                 box.name = copy_string(rem);
                 box.start_line = line_number+1;
-                box.file_path = file_path;
+                box.file_path = file_path.file.full_path;
                 array_add(*cow_boxes, box);
             }
         }
@@ -113,7 +110,7 @@ cow_scan :: () {
 }
 // cow 1
 
-// cow 2 COW Commands
+// cow 2 Commands
 cow_open :: () {
     if inited == false {
         cow_scan();
@@ -254,9 +251,6 @@ draw_cow :: (main_area: Rect) {
             // draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
         }
     }
-
-    Simp.prepare_text(font_ui_big, tprint("state: %", state));
-    Simp.draw_prepared_text(font_ui_big, 10, 10, color = xx Color.UI_DIM);
 
     do_input();
 }
