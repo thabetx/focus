@@ -1040,7 +1040,7 @@ FONT_UI      :: #run load_font("OpenSans-Regular.ttf");
 FONT_UI_BOLD :: #run load_font("OpenSans-SemiBold.ttf");
 FONT_ICONS   :: #run load_font("font-awesome/Font Awesome 6 Free-Solid-900.otf");
 
-MIN_FONT_SIZE :: 4;
+MIN_FONT_SIZE :: 3;
 MAX_FONT_SIZE :: 30;  // setting a larger size has caused freetype to crash - not sure yet why.
                       // Probably we don't give it enough memory for a glyph bitmap when rendering it?
 
