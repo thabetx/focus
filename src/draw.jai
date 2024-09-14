@@ -3767,6 +3767,84 @@ Button_Alignment :: enum {
     right;
 }
 
+
+// cow 5 Rendering
+draw_cow :: (main_area: Rect) {
+    // @hack
+    cow_camera.zoom = xx font_size;
+    
+    if y_scale != 0 && x_scale != 0 && (y_scale != line_height || x_scale != char_size) {
+        old_x_scale := x_scale;
+        old_y_scale := y_scale;
+        new_x_scale := char_size;
+        new_y_scale := line_height;
+        zoom_target := mouse.pointer;
+        distance_from_circle : Vector2 = zoom_target + cow_camera.position;
+        old_distance : Vector2 = .{distance_from_circle.x * old_x_scale, distance_from_circle.y * old_y_scale};
+        new_distance : Vector2 = .{distance_from_circle.x * new_x_scale, distance_from_circle.y * new_y_scale};
+        shift := new_distance - old_distance;
+        shift.x /= old_x_scale;
+        shift.y /= old_y_scale;
+        cow_camera.position += Vector2.{shift.x, shift.y};
+    }
+    
+    draw_rect(main_area, Color.BACKGROUND_4);
+    x_scale = char_size;
+    y_scale = line_height;
+    expanded_rect_padding_x : float = .6*x_scale;
+    expanded_rect_padding_y : float = .6*y_scale;
+    text_padding :float= 0.1*font_ui_big_line_height;
+    
+    hovering_header = false;
+    hovered_box_index = -1;
+    
+    for *cow_boxes {
+        world_rect := it.rect;
+        world_rect.x *= x_scale;
+        world_rect.y *= y_scale;
+        world_rect.w *= x_scale;
+        world_rect.h *= y_scale;
+        world_rect.x -= cow_camera.position.x;
+        world_rect.y -= cow_camera.position.y;
+        
+        header_rect := world_rect;
+        header_rect.h = 1.2*font_ui_big_line_height;
+        header_rect.y = world_rect.y + world_rect.h;
+        
+        expanded_rect := world_rect;
+        expanded_rect.w += expanded_rect_padding_x;
+        expanded_rect.h = world_rect.h + header_rect.h + expanded_rect_padding_y;
+        expanded_rect.x -= expanded_rect_padding_x/2;
+        expanded_rect.y -= expanded_rect_padding_y/2;
+        
+        all_rect := world_rect;
+        all_rect.h = world_rect.h + header_rect.h;
+        
+        if mouse_pointer_is_within(header_rect) hovering_header = true;
+        if mouse_pointer_is_within(expanded_rect) hovered_box_index = it_index;
+        
+        draw_rounded_rect_with_shadow(all_rect, Color.BACKGROUND_4);
+        if editors.active == it.editor_id draw_rounded_rect(expanded_rect, Color.UI_WARNING);
+        draw_rect(header_rect, Color.SELECTION_ACTIVE);
+        draw_editor(it.editor_id, world_rect, 0, xx it.editor_id, .{}, editors.active != it.editor_id);
+        {
+            push_scissor(header_rect);
+            defer pop_scissor();
+
+            editor := *open_editors[it.editor_id];
+            buffer := *open_buffers[editor.buffer_id];
+            width := Simp.prepare_text(font_ui_big, it.name);
+            Simp.draw_prepared_text(font_ui_big, xx (header_rect.x + text_padding), xx (header_rect.y + 3*text_padding), color = xx Color.UI_DEFAULT);
+            Simp.prepare_text(font_ui_medium, get_buffer_name(buffer));
+            Simp.draw_prepared_text(font_ui_medium, xx (header_rect.x + width + 2 * text_padding), xx (header_rect.y + 3*text_padding), color = xx Color.UI_DEFAULT);
+            // draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
+        }
+    }
+    
+    cow_input();
+}
+// cow 5
+
 #scope_file
 
 get_region_color :: (kind: Buffer_Region.Kind) -> Color {
