@@ -32,7 +32,7 @@ cow_save :: () {
     init_string_builder(*builder);
     for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
     write_entire_file(cow_canvas_filepath, builder_to_string(*builder));
-
+    
     {
         builder: String_Builder;
         builder.allocator = temp;
@@ -56,7 +56,7 @@ cow_load :: () {
             }
         }
     }
-
+    
     {
         state_text := read_entire_file(cow_state_filepath,, temp);
         x, y, zoom : int;
@@ -70,7 +70,7 @@ cow_load :: () {
 
 cow_scan :: () {
     file_paths := open_buffers;
-
+    
     for file_path :file_paths {
         cow_code_file := read_entire_file(file_path.file.full_path,, temp);
         lines := split(cow_code_file, "\n",, allocator = temp);
@@ -93,7 +93,7 @@ cow_scan :: () {
                 }
                 // do we need this?
                 box.rect.w = min(box.rect.w, 100);
-
+                
                 break;
             }
             if found == false {
@@ -125,7 +125,7 @@ cow_open :: () {
         font_size = xx cow_camera.zoom;
         init_fonts_and_dependent_things();
     }
-
+    
     // This could be done when loading, but the font size won't be correct
     if inited == false {
         for *cow_boxes {
@@ -138,7 +138,7 @@ cow_open :: () {
         }
     }
     inited = true;
-
+    
 }
 cow_close :: () {
     if editors.layout == .Cow {
@@ -186,7 +186,7 @@ x_scale : float;
 draw_cow :: (main_area: Rect) {
     // @hack
     cow_camera.zoom = xx font_size;
-
+    
     if y_scale != 0 && x_scale != 0 && (y_scale != line_height || x_scale != char_size) {
         old_x_scale := x_scale;
         old_y_scale := y_scale;
@@ -201,17 +201,17 @@ draw_cow :: (main_area: Rect) {
         shift.y /= old_y_scale;
         cow_camera.position += Vector2.{shift.x, shift.y};
     }
-
+    
     draw_rect(main_area, Color.BACKGROUND_4);
     x_scale = char_size;
     y_scale = line_height;
     expanded_rect_padding_x : float = .6*x_scale;
     expanded_rect_padding_y : float = .6*y_scale;
     text_padding :float= 0.1*font_ui_big_line_height;
-
+    
     hovering_header = false;
     hovered_box_index = -1;
-
+    
     for *cow_boxes {
         world_rect := it.rect;
         world_rect.x *= x_scale;
@@ -220,23 +220,23 @@ draw_cow :: (main_area: Rect) {
         world_rect.h *= y_scale;
         world_rect.x -= cow_camera.position.x;
         world_rect.y -= cow_camera.position.y;
-
+        
         header_rect := world_rect;
         header_rect.h = 1.2*font_ui_big_line_height;
         header_rect.y = world_rect.y + world_rect.h;
-
+        
         expanded_rect := world_rect;
         expanded_rect.w += expanded_rect_padding_x;
         expanded_rect.h = world_rect.h + header_rect.h + expanded_rect_padding_y;
         expanded_rect.x -= expanded_rect_padding_x/2;
         expanded_rect.y -= expanded_rect_padding_y/2;
-
+        
         all_rect := world_rect;
         all_rect.h = world_rect.h + header_rect.h;
-
+        
         if mouse_pointer_is_within(header_rect) hovering_header = true;
         if mouse_pointer_is_within(expanded_rect) hovered_box_index = it_index;
-
+        
         draw_rounded_rect_with_shadow(all_rect, Color.BACKGROUND_4);
         if editors.active == it.editor_id draw_rounded_rect(expanded_rect, Color.UI_WARNING);
         draw_rect(header_rect, Color.SELECTION_ACTIVE);
@@ -251,7 +251,7 @@ draw_cow :: (main_area: Rect) {
             // draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
         }
     }
-
+    
     do_input();
 }
 // cow 5
