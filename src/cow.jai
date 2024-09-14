@@ -173,30 +173,31 @@ Cow_State :: enum {
     EDITING;
 }
 
-state: Cow_State = .NONE;
+// cow 6 Input
+cow_x_scale : float;
+cow_y_scale : float;
+hovering_header : bool = false;
+
+cow_state: Cow_State = .NONE;
 
 hovered_box_index : s64 = -1;
 held_box_index : s64 = -1;
 edited_box_index : s64 = -1;
-hovering_header : bool = false;
 
-y_scale : float;
-x_scale : float;
-
-// cow 6 Input
+// @NOTE maybe move this to draw.jai
 cow_input :: () {
-    if #complete state == {
+    if #complete cow_state == {
         case .NONE;
             if hovered_box_index != -1 {
-                state = .HOVERING_EDITOR;
+                cow_state = .HOVERING_EDITOR;
                 cow_input();
             } else if mouse.middle.just_pressed || mouse.left.just_pressed {
-                state = .DRAGGING_CAMERA;
+                cow_state = .DRAGGING_CAMERA;
                 cow_input();
             }
         case .HOVERING_EDITOR;
             if hovered_box_index == -1 {
-                state = .NONE;
+                cow_state = .NONE;
                 cow_input();
             } else {
                 // make the clicked box last in array so it gets rendered on top of others
@@ -210,7 +211,7 @@ cow_input :: () {
                     if hovering_header == false {
                         make_editor_active(cow_boxes[hovered_box_index].editor_id);
                         edited_box_index = hovered_box_index;
-                        state = .EDITING;
+                        cow_state = .EDITING;
                         cow_input();
                     } else {
                         cow_close();
@@ -222,16 +223,16 @@ cow_input :: () {
                     }
                 } else if mouse.left.just_pressed {
                     held_box_index = hovered_box_index;
-                    state = .DRAGGING_EDITOR;
+                    cow_state = .DRAGGING_EDITOR;
                     cow_input();
                 } else if mouse.middle.just_pressed {
-                    state = .DRAGGING_CAMERA;
+                    cow_state = .DRAGGING_CAMERA;
                     cow_input();
                 }
             }
         case .DRAGGING_CAMERA;
             if mouse.middle.just_released || mouse.left.just_released {
-                state = .NONE;
+                cow_state = .NONE;
                 cow_input();
             } else if mouse.left.is_dragging || mouse.middle.is_dragging {
                 cow_camera.position.x -= mouse.delta.x;
@@ -239,17 +240,17 @@ cow_input :: () {
             }
         case .DRAGGING_EDITOR;
             if mouse.left.just_released {
-                state = .NONE;
+                cow_state = .NONE;
                 cow_input();
             } else if mouse.left.is_dragging {
-                cow_boxes[held_box_index].rect.x += mouse.delta.x / x_scale;
-                cow_boxes[held_box_index].rect.y += mouse.delta.y / y_scale;
+                cow_boxes[held_box_index].rect.x += mouse.delta.x / cow_x_scale;
+                cow_boxes[held_box_index].rect.y += mouse.delta.y / cow_y_scale;
             }
         case .EDITING;
             if hovered_box_index != edited_box_index {
                 if mouse.left.just_pressed {
                     make_editor_active(-1);
-                    state = .NONE;
+                    cow_state = .NONE;
                     cow_input();
                 }
             }

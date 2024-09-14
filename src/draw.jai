@@ -3767,32 +3767,32 @@ Button_Alignment :: enum {
     right;
 }
 
-
 // cow 5 Rendering
+
 draw_cow :: (main_area: Rect) {
     // @hack
     cow_camera.zoom = xx font_size;
     
-    if y_scale != 0 && x_scale != 0 && (y_scale != line_height || x_scale != char_size) {
-        old_x_scale := x_scale;
-        old_y_scale := y_scale;
-        new_x_scale := char_size;
-        new_y_scale := line_height;
+    if cow_y_scale != 0 && cow_x_scale != 0 && (cow_y_scale != line_height || cow_x_scale != char_size) {
+        old_cow_x_scale := cow_x_scale;
+        old_cow_y_scale := cow_y_scale;
+        new_cow_x_scale := char_size;
+        new_cow_y_scale := line_height;
         zoom_target := mouse.pointer;
         distance_from_circle : Vector2 = zoom_target + cow_camera.position;
-        old_distance : Vector2 = .{distance_from_circle.x * old_x_scale, distance_from_circle.y * old_y_scale};
-        new_distance : Vector2 = .{distance_from_circle.x * new_x_scale, distance_from_circle.y * new_y_scale};
+        old_distance : Vector2 = .{distance_from_circle.x * old_cow_x_scale, distance_from_circle.y * old_cow_y_scale};
+        new_distance : Vector2 = .{distance_from_circle.x * new_cow_x_scale, distance_from_circle.y * new_cow_y_scale};
         shift := new_distance - old_distance;
-        shift.x /= old_x_scale;
-        shift.y /= old_y_scale;
+        shift.x /= old_cow_x_scale;
+        shift.y /= old_cow_y_scale;
         cow_camera.position += Vector2.{shift.x, shift.y};
     }
     
     draw_rect(main_area, Color.BACKGROUND_4);
-    x_scale = char_size;
-    y_scale = line_height;
-    expanded_rect_padding_x : float = .6*x_scale;
-    expanded_rect_padding_y : float = .6*y_scale;
+    cow_x_scale = char_size;
+    cow_y_scale = line_height;
+    expanded_rect_padding_x : float = .6*cow_x_scale;
+    expanded_rect_padding_y : float = .6*cow_y_scale;
     text_padding :float= 0.1*font_ui_big_line_height;
     
     hovering_header = false;
@@ -3800,10 +3800,10 @@ draw_cow :: (main_area: Rect) {
     
     for *cow_boxes {
         world_rect := it.rect;
-        world_rect.x *= x_scale;
-        world_rect.y *= y_scale;
-        world_rect.w *= x_scale;
-        world_rect.h *= y_scale;
+        world_rect.x *= cow_x_scale;
+        world_rect.y *= cow_y_scale;
+        world_rect.w *= cow_x_scale;
+        world_rect.h *= cow_y_scale;
         world_rect.x -= cow_camera.position.x;
         world_rect.y -= cow_camera.position.y;
         
