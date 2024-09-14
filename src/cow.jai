@@ -133,7 +133,7 @@ cow_open :: () {
     if inited == false {
         for *cow_boxes {
             buffer_id := find_or_create_buffer(it.file_path);
-            it.editor_id = find_or_create_editor2(buffer_id);
+            it.editor_id = find_or_create_editor_for_cow(buffer_id);
             editor := *open_editors[it.editor_id];
             viewport := *editor.viewport;
             // the 0.5 is to hide any part of the start-1 line

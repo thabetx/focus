@@ -1450,7 +1450,7 @@ line_wrap_is_active :: inline (editor: Editor) -> bool {
 find_or_create_editor :: (buffer_id: s64, unwanted_existing_editor: s64 = -1) -> editor_id: s64, created: bool {
     assert(buffer_id >= 0 && buffer_id < open_buffers.count, "Attempt to create editor for nonexistent buffer");
     for open_editors {
-        if it.buffer_id == buffer_id && it_index != unwanted_existing_editor
+        if it.buffer_id == buffer_id && it_index != unwanted_existing_editor && it.belongs_to_cow == false
             return it_index, false;
     }
 
@@ -1465,16 +1465,20 @@ find_or_create_editor :: (buffer_id: s64, unwanted_existing_editor: s64 = -1) ->
     }
 
     open_buffers[buffer_id].num_editors_open += 1;
-    assert(open_buffers[buffer_id].num_editors_open <= 2);
+    // @NOTE this assertion no longer holds since we can have more than two editors for the same buffer
+    // maybe change it to count non-cow-belonging editors
+    // assert(open_buffers[buffer_id].num_editors_open <= 2);
 
     return editor_id, true;
 }
 
-find_or_create_editor2 :: (buffer_id: s64) -> editor_id: s64, created: bool {
+// @NOTE maybe use the above function with a condition
+find_or_create_editor_for_cow :: (buffer_id: s64) -> editor_id: s64, created: bool {
     assert(buffer_id >= 0 && buffer_id < open_buffers.count, "Attempt to create editor for nonexistent buffer");
     editor_id := open_editors.count;
     editor := array_add(*open_editors);
     editor.buffer_id = buffer_id;
+    editor.belongs_to_cow = true;
     array_add(*editor.cursors, Cursor.{});
 
     if config.settings.line_wrap_is_on_by_default {
@@ -3534,6 +3538,8 @@ Editor :: struct {
 
     // TODO: make a global array instead
     paste_animations: [..] Paste_Animation;
+    
+    belongs_to_cow: bool = false;
 }
 
 Cursor_Movement :: enum u8 {
