@@ -3680,7 +3680,6 @@ Editor_Placement :: enum {
     on_the_side;
     left;
     right;
-    floating;
 }
 
 open_buffers_lock: Mutex;  // must hold while adding a new buffer

@@ -89,8 +89,8 @@ color_preview_set_width :: (width: float) {
 color_preview_get_position :: () -> Panel_Position {
     if #complete editors.layout == {
         case .None;     saved_position = .right;
+        case .Cow;      saved_position = .right;
         case .Single;   saved_position = .right;
-        case .Cow; #through;
         case .Double;   if editor_closing_id >= 0 then saved_position = .right;
                         else if editors.active == editors.left  then saved_position = .right;
                         else if editors.active == editors.right then saved_position = .left;

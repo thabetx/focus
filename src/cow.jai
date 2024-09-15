@@ -77,8 +77,9 @@ cow_scan :: () {
         for line: lines {
             trimmed := trim_left(line);
             if begins_with(trimmed, "// cow") advance(*trimmed, 6);
-            else if begins_with(trimmed, "# cow") advance(*trimmed, 6);
+            else if begins_with(trimmed, "# cow") advance(*trimmed, 5);
             else continue;
+
             id, ok, rem := to_integer(trimmed);
             if ok == false continue;
             line_number := it_index;
