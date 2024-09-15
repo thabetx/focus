@@ -32,7 +32,7 @@ cow_save :: () {
     init_string_builder(*builder);
     for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
     write_entire_file(cow_canvas_filepath, builder_to_string(*builder));
-    
+
     {
         builder: String_Builder;
         builder.allocator = temp;
@@ -56,7 +56,7 @@ cow_load :: () {
             }
         }
     }
-    
+
     {
         state_text := read_entire_file(cow_state_filepath,, temp);
         x, y, zoom : int;
@@ -70,7 +70,7 @@ cow_load :: () {
 
 cow_scan :: () {
     file_paths := open_buffers;
-    
+
     for file_path :file_paths {
         cow_code_file := read_entire_file(file_path.file.full_path,, temp);
         lines := split(cow_code_file, "\n",, allocator = temp);
@@ -94,7 +94,7 @@ cow_scan :: () {
                 }
                 // do we need this?
                 box.rect.w = min(box.rect.w, 100);
-                
+
                 break;
             }
             if found == false {
@@ -126,7 +126,7 @@ cow_open :: () {
         font_size = xx cow_camera.zoom;
         init_fonts_and_dependent_things();
     }
-    
+
     // This could be done when loading, but the font size won't be correct
     if inited == false {
         for *cow_boxes {
@@ -139,7 +139,13 @@ cow_open :: () {
         }
     }
     inited = true;
-    
+
+}
+cow_rescan ::() {
+    for *cow_boxes free(it.name);
+    array_reset_keeping_memory(*cow_boxes);
+    cow_scan();
+    cow_load();
 }
 cow_close :: () {
     if editors.layout == .Cow {

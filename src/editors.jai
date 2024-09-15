@@ -411,7 +411,7 @@ get_active_editor_and_buffer :: () -> *Editor, *Buffer {
     if editors.layout == .Cow {
         if editors.active == -1 return null, null;
     }
-    
+
     editor := *open_editors[editors.active];
     buffer := *open_buffers[editor.buffer_id];
     return editor, buffer;
@@ -3538,7 +3538,7 @@ Editor :: struct {
 
     // TODO: make a global array instead
     paste_animations: [..] Paste_Animation;
-    
+
     belongs_to_cow: bool = false;
 }
 
@@ -3557,7 +3557,6 @@ Cursor_Movement :: enum u8 {
     refresh_only;
 }
 
-// what is this?
 Viewport :: struct {
     top:  s32;
     left: s32;

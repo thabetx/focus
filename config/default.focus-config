@@ -331,6 +331,7 @@ F1                          cow_open
 
 [cow]
 F1                          cow_close
+F2                          cow_rescan
 A                           cow_left
 D                           cow_right
 W                           cow_up

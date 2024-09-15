@@ -300,8 +300,8 @@ main :: () {
                 case .theme_dialog;             handled = theme_dialog_handle_event(event);
                 case .language_dialog;          handled = language_dialog_handle_event(event);
             }
-            
-            
+
+
             if !handled {
                 editor, _ := get_active_editor_and_buffer();
                 if editors.layout == .Cow && editor == null {
@@ -437,6 +437,7 @@ handle_common_editor_action :: (action: Action_Editors, placement: Editor_Placem
 handle_cow_action :: (action: Action_Cow) -> handled: bool {
     if action == {
         case .cow_close;     cow_close();   return true;
+        case .cow_rescan;    cow_rescan();  return true;
         case .cow_left;      cow_left();    return true;
         case .cow_right;     cow_right();   return true;
         case .cow_up;        cow_up();      return true;
