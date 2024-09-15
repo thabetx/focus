@@ -9,13 +9,6 @@ init_build_system :: () {
     buffer.lang = .Focus_Build_Panel;
     if config.settings.build_panel_line_wrap_always_on then editor.line_wrap = .on; else editor.line_wrap = .off;
 
-    // Remember allocators, so that we don't accidentally use the pool allocator on any of these arrays.
-    // We should really use custom expandable arrays which don't remember allocators on buffers at some point
-    buffer.bytes.allocator   = focus_allocator;
-    buffer.tokens.allocator  = focus_allocator;
-    buffer.regions.allocator = focus_allocator;
-    buffer.cursors.allocator = focus_allocator;
-
     commands_refresh_after_config_change();
 
     init(*build_mutex);
@@ -32,19 +25,12 @@ deinit_build_system :: () {
     // Assuming that the editor and the buffer will be cleaned up separately
     build_buffer_id = -1;
     build_editor_id = -1;
-    running_command = false;
+    running_command = "";
 }
 
 execute_build_command :: (command: *Build_Command) {
-    if !workspace_scan_complete {
-        add_user_warning("The workspace is still being scanned. Please wait for it to complete before executing build commands.", dismiss_in_seconds = 5, tag = .build);
-        return;
-    }
-
-    if running_command {
-        add_user_warning("A build command is still running", dismiss_in_seconds = 5, tag = .build);
-        return;
-    }
+    assert(workspace_scan_complete);
+    assert(!running_command);
 
     clear_user_messages(.build);
 
@@ -108,7 +94,7 @@ execute_build_command :: (command: *Build_Command) {
     work.current_build_buffer_offset = open_buffers[build_buffer_id].bytes.count;
 
     add_work(*thread_group, work);
-    running_command = true;
+    running_command = work.name;  // work.name should live until a new command is kicked off
 }
 
 build_clear_output :: () {
@@ -125,13 +111,13 @@ build_clear_output :: () {
     if editor.line_wrap == .on then rescan_for_wrapped_lines(editor, buffer);
 
     lock(*buffer.content_lock);
-    array_reset_keeping_memory(*buffer.regions);
-    array_resize(*buffer.tokens, buffer.bytes.count);
+    reset_keeping_memory(*buffer.regions);
+    resize(*buffer.tokens, buffer.bytes.count);
     memset(buffer.tokens.data, 0, buffer.tokens.count);
     unlock(*buffer.content_lock);
 }
 
-build_command_is_running :: () -> bool {
+build_get_running_command_name :: () -> string {
     return running_command;
 }
 
@@ -165,7 +151,7 @@ build_system_update :: () {
     results := get_completed_work(*thread_group);
     if results {
         // We only process one command at a time, so this means our running command has finished
-        assert(running_command != false, "Build thread has finished work, but no command running");
+        assert(running_command != "", "Build thread has finished work, but no command running");
         assert(results.count == 1, "Build thread returned more than 1 result. This is a bug.");
 
         finished_command := cast(*Build_Thread_Work) results[0];
@@ -236,7 +222,7 @@ build_system_update :: () {
             if finished_command.auto_jump_to_error then go_to_next_build_error();
         }
 
-        running_command = false;
+        running_command = "";
     }
 }
 
@@ -256,14 +242,15 @@ show_build_panel :: () {
         case .unsaved_buffers_dialog;   // do nothing, we still want to see them
         case .confirm_overwrite_dialog; // do nothing, we still want to see them
 
-        case .open_file_dialog;         #through;
-        case .delete_file_dialog;       #through;
-        case .finder;                   #through;
-        case .go_to_line_dialog;        #through;
-        case .switch_to_project_dialog; #through;
-        case .theme_dialog;             #through;
-        case .language_dialog;          #through;
-        case .commands_dialog;          active_global_widget = .editors;
+        case .open_file_dialog;                 #through;
+        case .delete_file_dialog;               #through;
+        case .kill_running_command_dialog;      #through;
+        case .finder;                           #through;
+        case .go_to_line_dialog;                #through;
+        case .switch_to_project_dialog;         #through;
+        case .theme_dialog;                     #through;
+        case .language_dialog;                  #through;
+        case .commands_dialog;                  active_global_widget = .editors;
     }
     if !build_panel_is_shown {
         previously_active_editor = editors.active;
@@ -487,7 +474,7 @@ print_to_output_panel_from_main_thread :: (s: string, mark_as: Buffer_Region.Kin
     editor.scroll_to_cursor = .yes;
 
     if mark_as != .none {
-        array_add(*buffer.regions, Buffer_Region.{ start = start, end = end, kind = mark_as });
+        add(*buffer.regions, Buffer_Region.{ start = start, end = end, kind = mark_as });
     }
 
     // Maybe forget some bytes at the beginning
@@ -495,7 +482,7 @@ print_to_output_panel_from_main_thread :: (s: string, mark_as: Buffer_Region.Kin
         bytes_to_forget := cast(s32) (buffer.bytes.count - MAX_BUILD_OUTPUT_BUFFER_SIZE);
 
         lock(*buffer.content_lock);
-        array_resize(*buffer.tokens, buffer.bytes.count);  // resize first before we delete
+        resize(*buffer.tokens, buffer.bytes.count);  // resize first before we delete
         delete_range_raw(buffer, 0, bytes_to_forget);
         array_delete_bytes(xx *buffer.tokens, 0, bytes_to_forget);
         unlock(*buffer.content_lock);
@@ -510,7 +497,7 @@ print_to_output_panel_from_main_thread :: (s: string, mark_as: Buffer_Region.Kin
             region.end   -= bytes_to_forget;
             if region.start < 0 || region.end < 0 then remove region;  // will have to sort later because they must be sorted
         }
-        quick_sort(buffer.regions, (a, b) => (a.start - b.start));
+        quick_sort(to_view(buffer.regions), (a, b) => (a.start - b.start));
     }
 }
 
@@ -622,7 +609,7 @@ parse_build_errors :: (error_regex: string) {
     editor, buffer := get_build_editor_and_buffer();
     output_range := build.output_range;
     if output_range.start < 0 || output_range.end <= output_range.start || output_range.end > buffer.bytes.count return;
-    build_output := cast(string) array_view(buffer.bytes, output_range.start, output_range.end - output_range.start);
+    build_output := cast(string) to_view(buffer.bytes, output_range.start, output_range.end - output_range.start);
 
     compiled_regex, valid := re.compile(error_regex, .LikePerl & ~.OneLine);
     if !valid {
@@ -708,20 +695,20 @@ parse_build_errors :: (error_regex: string) {
         lang := get_lang_from_path(error.file);
 
         // Assume that code samples might be somewhere in between the error data we've parsed
-        start := cast(s64) error.error_info_end_offset;
+        start := error.error_info_end_offset;
         end   := buffer.bytes.count;
         if it_index < build_errors.count - 1 then end = build_errors[it_index + 1].error_info_start_offset;
 
         if end < start continue;  // TODO: investigate why this might be happening before we implement other languages. See https://github.com/focus-editor/focus/issues/379
 
-        potential_code_block := cast(string) array_view(buffer.bytes, start, end - start);
+        potential_code_block := cast(string) to_view(buffer.bytes, start, end - start);
 
         if lang == .Jai {
             // In the Jai compiler output, sample code blocks should be separated by double newlines + spaces
-            last_double_newline := find_index_from_right(potential_code_block, "\n\n");
+            last_double_newline := cast(s32) find_index_from_right(potential_code_block, "\n\n");
             if last_double_newline >= 0 then end = start + last_double_newline;
 
-            first_double_newline := find_index_from_left(potential_code_block, "\n    ");
+            first_double_newline := cast(s32) find_index_from_left(potential_code_block, "\n    ");
             if first_double_newline >= 0 then start += first_double_newline;
         } else {
             continue;  // don't attempt to highlight other languages until we figure out a robust way to parse out code samples
@@ -823,7 +810,7 @@ saved_position := Build_Panel_Position.right;
 
 build_panel_is_expanded := false;
 
-running_command := false;
+running_command := "";  // the name of the running command
 running_process: Process;
 
 last_command_result: struct {

@@ -1,44 +1,25 @@
-confirm_overwrite_dialog_handle_event :: (event: Input.Event) -> bool {
-    if event.type == .KEYBOARD && event.key_pressed {
-        if event.key_code == {
-            case .ESCAPE;       #through;
-            case #char "N";     #through;
-            case #char "C";     close_confirm_overwrite_dialog();   return true;
+confirm_overwrite_dialog: Confirm_Overwrite_Dialog;
 
-            case .ENTER;        #through;
-            case #char "Y";     #through;
-            case #char "O";     confirm_overwrite_dialog_proceed(); return true;
-        }
-    }
-    return false;
+Confirm_Overwrite_Dialog :: struct {
+    using #as generic_dialog: Generic_Confirm_Dialog(Dialog_Details);
+
+    global_widget_id = .confirm_overwrite_dialog;
+    set_details = dialog_set_details;
+    get_buttons = dialog_get_buttons;
 }
 
-show_confirm_overwrite_dialog :: (buffer_id: s64, path: string) {
-    active_global_widget = .confirm_overwrite_dialog;
+#scope_file
 
-    confirm_overwrite_dialog.buffer_id = buffer_id;
-    confirm_overwrite_dialog.path = path;
+Dialog_Details :: struct { path: string; }
+
+dialog_set_details :: (details: Dialog_Details) {
+    if confirm_overwrite_dialog.path then free(confirm_overwrite_dialog.path);
+    confirm_overwrite_dialog.path = copy_string(details.path);
 }
 
-close_confirm_overwrite_dialog :: () {
-    activate_editors();
+dialog_get_buttons :: () -> [] Generic_Confirm_Dialog_Button {
+    return .[
+        .{ "Overwrite", .OK,     .[ .ENTER,  #char "Y", #char "O" ], Color.UI_ERROR,   Color.UI_DEFAULT },
+        .{ "Cancel",    .CANCEL, .[ .ESCAPE, #char "N", #char "C" ], Color.UI_NEUTRAL, Color.UI_DEFAULT },
+    ];
 }
-
-confirm_overwrite_dialog_proceed :: () {
-    using confirm_overwrite_dialog;
-
-    buffer := *open_buffers[buffer_id];
-
-    save_buffer_to_file(buffer, buffer_id, path);
-
-    remove_buffer_from_save_queue(buffer_id);
-
-    close_confirm_overwrite_dialog();
-}
-
-#scope_export
-
-confirm_overwrite_dialog: struct {
-    buffer_id: s64;
-    path: string;
-};

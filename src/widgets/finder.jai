@@ -70,6 +70,8 @@ finder_open :: () {
     input.cursor.sel = 0;
     input.cursor.pos = xx input.text.count;
 
+    case_sensitive_toggled_manually = false;
+
     if need_to_refresh_results {
         need_to_refresh_results = false;
         reset_results();
@@ -88,7 +90,7 @@ finder_open_from_editor :: () {
     if editor && editor.cursors.count == 1 {
         cursor := editor.cursors[0];
         selected_text := get_selected_string(cursor, buffer);
-        if selected_text && selected_text != cast(string) finder.input.text && offset_to_line(editor, buffer, cursor.pos) == offset_to_line(editor, buffer, cursor.sel) {
+        if selected_text && selected_text != to_string(finder.input.text) && offset_to_line(editor, buffer, cursor.pos) == offset_to_line(editor, buffer, cursor.sel) {
             replace_text(*finder.input, selected_text);
             reset_results();
             start_new_search();
@@ -196,6 +198,8 @@ finder_toggle_case_sensitive :: () {
     using finder;
 
     case_sensitive = !case_sensitive;
+    case_sensitive_toggled_manually = true;
+
     start_new_search(force = true);
 }
 
@@ -233,7 +237,13 @@ start_new_search :: (force := false) {
         reset_results();
         return;
     }
-    if request.needle == cast(string) input.text && !force return;  // needle hasn't changed, no need to repeat
+    new_needle := to_string(input.text);
+
+    if request.needle == new_needle && !force return;  // needle hasn't changed, no need to repeat
+
+    if config.settings.search_is_case_sensitive_when_uppercase_present && !case_sensitive_toggled_manually {
+        case_sensitive = contains_uppercase_ascii(new_needle);
+    }
 
     request.case_sensitive = case_sensitive;
     request.whole_word     = whole_word;
@@ -244,13 +254,13 @@ start_new_search :: (force := false) {
         flags := BASE_REGEX_FLAGS;
         if !case_sensitive flags |= .FoldCase;
 
-        regex, regex_is_valid = re.compile(cast(string) input.text, flags);
+        regex, regex_is_valid = re.compile(new_needle, flags);
         if !regex_is_valid return;  // only search if the regex is valid
 
         re.uninit(*regex);
     }
 
-    reset_search_request(*request, new_needle = cast(string) input.text);
+    reset_search_request(*request, new_needle);
     request.in_progress = true;
 
     num_threads := thread_group.worker_info.count;
@@ -320,7 +330,7 @@ search_threadproc :: (group: *Thread_Group, thread: *Thread, work: *void) -> Thr
 }
 
 find_all_using_regex :: (using task: *Search_Task, regex: re.Regexp, buffer: Buffer, buffer_id: s32, buffer_sort_key: u64) {
-    buffer_str := cast(string) buffer.bytes;
+    buffer_str := to_string(buffer.bytes);
 
     while true {
         if buffer_str.count <= 0 break;
@@ -355,7 +365,7 @@ find_all_using_regex :: (using task: *Search_Task, regex: re.Regexp, buffer: Buf
 }
 
 find_all :: (using task: *Search_Task, buffer: Buffer, buffer_id: s32, buffer_sort_key: u64) {
-    buffer_str := cast(string) buffer.bytes;
+    buffer_str := to_string(buffer.bytes);
     offset := 0;
 
     while true {
@@ -430,6 +440,7 @@ Finder :: struct {
     results: [..] Search_Result;
 
     case_sensitive: bool;
+    case_sensitive_toggled_manually: bool;
     whole_word: bool;
     regex_search: bool;
     regex_is_valid: bool;
@@ -439,7 +450,7 @@ Finder :: struct {
     per_page := 10;
 
     scroll_y: s32;
-    scroll_anim := #run Tween_Animation(s32).{ speed = xx 0.1, func = .lerp };
+    scroll_anim := #run Tween_Animation(s32).{ speed = 0.1, func = .lerp };
     scroll_to_cursor: Scroll_Mode = .no;
 
     width_percentage := WIDTH_NORMAL;  // how much of the screen the popup occupies

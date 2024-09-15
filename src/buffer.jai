@@ -3,8 +3,8 @@ refresh_open_buffers :: () {
         buffer := *open_buffers[editor.buffer_id];
 
         if editor.line_wrap == {
-            case .to_disable;   array_reset_keeping_memory(*editor.wrapped_line_starts); editor.line_wrap = .off;
-            case .to_enable;    rescan_for_wrapped_lines(editor, buffer);                editor.line_wrap = .on;
+            case .to_disable;   reset_keeping_memory(*editor.wrapped_line_starts); editor.line_wrap = .off;
+            case .to_enable;    rescan_for_wrapped_lines(editor, buffer);          editor.line_wrap = .on;
         }
 
         if !buffer.dirty && !buffer.was_dirty_during_frame continue;
@@ -13,14 +13,14 @@ refresh_open_buffers :: () {
 
         buffer.was_dirty_during_frame = false;
         buffer.needs_tokenizing = true;
-        buffer.last_edit_time = frame_time;
+        buffer.last_edit_time = frame_time64;
 
         refresh_all_editors_for_buffer(editor.buffer_id);
 
         session_notify_modified_buffer(editor.buffer_id);
 
         // Maybe mark buffer as not modified if we've made it match the contents on disk
-        if !buffer.readonly then buffer.modified = buffer.meow_hash != calculate_hash(buffer.bytes);
+        if !buffer.readonly then buffer.modified = buffer.meow_hash != calculate_hash(to_view(buffer.bytes));
         if !buffer.modified then buffer.modified_on_disk = false;  // we've verified that the contents matches that on disk
 
         finder.need_to_refresh_results = true;
@@ -32,39 +32,38 @@ put_cursor_in_valid_spot :: (using cursor: *Cursor, buffer: Buffer) {
     sel = clamp(sel, 0, xx buffer.bytes.count);
 }
 
-insert_string_at_offset :: (buffer: *Buffer, offset: s64, str: string) {
+insert_string_at_offset :: (buffer: *Buffer, offset: s32, str: string) {
     new_insert_edit(buffer, offset, str);
     insert_string_raw(buffer, offset, str);
 }
 
 insert_char_at_offset :: (buffer: *Buffer, offset: s32, char: Utf8_Char) {
-    new_insert_char_edit(buffer, offset, char);
     str := to_string(*char);
+    new_insert_char_edit(buffer, offset, char);
     insert_string_raw(buffer, offset, str);
 }
 
 delete_range :: (buffer: *Buffer, using range: Offset_Range) {
     if start == end return;
-    old_str := cast(string) array_view(buffer.bytes, start, end - start);
+    old_str := cast(string) to_view(buffer.bytes, start, end - start);
     new_delete_edit(buffer, start, end, old_str);
     delete_range_raw(buffer, start, end);
 }
 
 replace_range :: (buffer: *Buffer, using range: Offset_Range, str: string) {
-    old_str := cast(string) array_view(buffer.bytes, start, end - start);
+    old_str := cast(string) to_view(buffer.bytes, start, end - start);
     if str == old_str return;
 
     new_replace_edit(buffer, start, end, old_str, str);
-
     replace_range_raw(buffer, start, end, str);
 }
 
-delete_range_raw :: (using buffer: *Buffer, start: s64, end: s64, $notify := true) {
+delete_range_raw :: (using buffer: *Buffer, start: s32, end: s32, $notify := true) {
     len := end - start;
     if len <= 0 return;
 
     lock(*buffer.content_lock);
-    array_delete_bytes(*bytes, start, len);
+    delete_range(*bytes, start, len);
     unlock(*buffer.content_lock);
 
     #if notify add_edit_notification(buffer, start, end - start, 0);
@@ -72,13 +71,13 @@ delete_range_raw :: (using buffer: *Buffer, start: s64, end: s64, $notify := tru
     buffer.dirty = true;
 }
 
-insert_string_raw :: (buffer: *Buffer, offset: s64, str: string, $notify := true) {
+insert_string_raw :: (buffer: *Buffer, offset: s32, str: string, $notify := true) {
     bytes: [] u8;
     bytes.data  = str.data;
     bytes.count = str.count;
 
     lock(*buffer.content_lock);
-    array_insert_bytes_at(*buffer.bytes, offset, bytes);
+    insert_at(*buffer.bytes, offset, bytes);
     unlock(*buffer.content_lock);
 
     #if notify add_edit_notification(buffer, offset, 0, str.count);
@@ -121,29 +120,29 @@ get_char_at_offset_as_string :: (using buffer: Buffer, offset: s32) -> string {
 
 get_line_starts :: (editor: Editor, buffer: Buffer) -> [] s32 {
     if line_wrap_is_active(editor) {
-        return editor.wrapped_line_starts;
+        return to_view(editor.wrapped_line_starts);
     } else {
-        return buffer.line_starts;
+        return to_view(buffer.line_starts);
     }
 }
 
-offset_to_coords :: (editor: Editor, buffer: Buffer, offset: s64) -> Coords {
+offset_to_coords :: (editor: Editor, buffer: Buffer, offset: s32) -> Coords {
     line := offset_to_line(editor, buffer, offset);
     col  := _get_visual_col_by_scanning_line(buffer, line, offset, get_line_starts(editor, buffer));
 
     return Coords.{ line = line, col = col };
 }
 
-offset_to_real_coords :: (buffer: Buffer, offset: s64) -> Coords {
+offset_to_real_coords :: (buffer: Buffer, offset: s32) -> Coords {
     line := offset_to_real_line(buffer, offset);
-    col  := _get_visual_col_by_scanning_line(buffer, line, offset, buffer.line_starts);
+    col  := _get_visual_col_by_scanning_line(buffer, line, offset, to_view(buffer.line_starts));
 
     return Coords.{ line = line, col = col };
 }
 
 // This function counts visual indent, taking tab size into account
-_get_visual_col_by_scanning_line :: (buffer: Buffer, line_num: s32, offset: s64, line_starts: [] s32) -> col: s32 {
-    return num_cols_in_string(xx array_view(buffer.bytes, line_starts[line_num], offset - line_starts[line_num]));
+_get_visual_col_by_scanning_line :: (buffer: Buffer, line_num: s32, offset: s32, line_starts: [] s32) -> col: s32 {
+    return num_cols_in_string(xx to_view(buffer.bytes, line_starts[line_num], offset - line_starts[line_num]));
 }
 
 get_cursor_coords :: (editor: Editor, buffer: Buffer, using cursor: Cursor) -> Cursor_Coords {
@@ -160,27 +159,17 @@ get_real_cursor_coords :: (buffer: Buffer, using cursor: Cursor) -> Cursor_Coord
 
 offset_to_line :: (editor: Editor, buffer: Buffer, offset: s64) -> line_num: s32 {
     assert(!buffer.dirty, "buffer is dirty, can't calculate line from offset");
-    if buffer.bytes.count < offset {
-        if buffer.has_file {
-            print("Buffer: %\n", buffer.file.full_path);
-        } else {
-            print("Buffer has no file\n");
-        }
-    }
     assert(offset <= buffer.bytes.count, "offset exceeds buffer size, can't calculate line");
 
-    if line_wrap_is_active(editor) {
-        return search_line_num_by_offset(editor.wrapped_line_starts, offset);
-    } else {
-        return search_line_num_by_offset(buffer.line_starts, offset);
-    }
+    line_starts := get_line_starts(editor, buffer);
+    return search_line_num_by_offset(line_starts, offset);
 }
 
 offset_to_real_line :: (using buffer: Buffer, offset: s64) -> line_num: s32 {
     assert(!dirty, "buffer is dirty, can't calculate line from offset");
     assert(offset <= bytes.count, "offset exceeds buffer size, can't calculate line");
 
-    return search_line_num_by_offset(line_starts, offset);
+    return search_line_num_by_offset(to_view(line_starts), offset);
 }
 
 search_line_num_by_offset :: (line_starts: [] s32, offset: s64) -> line_num: s32 {
@@ -217,7 +206,7 @@ coords_to_offset :: (editor: Editor, buffer: Buffer, coords: Coords) -> s32 {
 real_coords_to_offset :: (using buffer: Buffer, coords: Coords) -> s32 {
     assert(!buffer.dirty);
 
-    return _get_offset_by_coords(buffer, buffer.line_starts, coords);
+    return _get_offset_by_coords(buffer, to_view(buffer.line_starts), coords);
 }
 
 _get_offset_by_coords :: (buffer: Buffer, line_starts: [] s32, coords: Coords) -> offset: s32 {
@@ -322,6 +311,13 @@ remove_crlf_in_place :: (bytes: *[] u8) -> bytes_removed: s64 {
     return bytes_removed;
 }
 
+remove_crlf_in_place :: inline (array: *Array(u8)) -> bytes_removed: s64 {
+    bytes := to_view(array);
+    bytes_removed := remove_crlf_in_place(*bytes);
+    array.count = cast(s32) bytes.count;
+    return bytes_removed;
+}
+
 remove_crlf_in_place :: inline (str: *string) -> bytes_removed: s64 {
     return remove_crlf_in_place(cast(*[] u8) str);
 }
@@ -335,10 +331,10 @@ rescan_for_lines :: (using buffer: *Buffer) {
         dirty = false;
     }
 
-    array_reset_keeping_memory(*line_starts);
-    array_add(*line_starts, 0);  // first line
+    reset_keeping_memory(*line_starts);
+    add(*line_starts, 0);  // first line
 
-    s := cast(string) bytes;
+    s := to_string(bytes);
 
     // NOTE: this implementation is slightly faster on my machine, but really not by much - need to test on other machines
     if check_feature(cpu_info.feature_leaves, x86_Feature_Flag.AVX2) {
@@ -365,7 +361,7 @@ rescan_for_lines :: (using buffer: *Buffer) {
                 }
                 mask >>= (bit_id + 1);
                 shift += bit_id + 1;
-                array_add(*line_starts, cast,no_check(s32)(data - bytes.data + shift));
+                add(*line_starts, cast,no_check(s32)(data - bytes.data + shift));
             }
             count -= 16;
             data  += 16;
@@ -381,22 +377,22 @@ rescan_for_lines :: (using buffer: *Buffer) {
         index := inline find_index_from_left(s, 0xA, start_index);
         if index >= 0 {
             start_index = index + 1;
-            array_add(*line_starts, cast,no_check(s32) (processed_with_simd + start_index));
+            add(*line_starts, cast,no_check(s32) (processed_with_simd + start_index));
         } else {
             break;
         }
     }
 
-    array_add(*line_starts, cast(s32) bytes.count);  // last line
+    add(*line_starts, cast(s32) bytes.count);  // last line
 }
 
 rescan_for_wrapped_lines :: (editor: *Editor, buffer: Buffer) {
     // Not locking here because rescanning for wrapped lines should only happen in the main thread
 
-    array_reset_keeping_memory(*editor.wrapped_line_starts);
-    array_reserve(*editor.wrapped_line_starts, buffer.line_starts.count);  // can't be less than that
+    reset_keeping_memory(*editor.wrapped_line_starts);
+    reserve(*editor.wrapped_line_starts, buffer.line_starts.count);  // can't be less than that
 
-    array_add(*editor.wrapped_line_starts, 0);  // first line
+    add(*editor.wrapped_line_starts, 0);  // first line
 
     max_width_in_chars := ifx editor.last_width_in_chars > 0 then editor.last_width_in_chars else S32_MAX;
     current_line_width := 0;
@@ -417,15 +413,15 @@ rescan_for_wrapped_lines :: (editor: *Editor, buffer: Buffer) {
         }
 
         if current_line_width > max_width_in_chars {
-            array_add(*editor.wrapped_line_starts, this_char_index);
+            add(*editor.wrapped_line_starts, this_char_index);
             current_line_width = 1;
         } else if byte == #char "\n" {
-            array_add(*editor.wrapped_line_starts, i);
+            add(*editor.wrapped_line_starts, i);
             current_line_width = 0;
         }
     }
 
-    array_add(*editor.wrapped_line_starts, cast(s32) buffer.bytes.count);  // last line
+    add(*editor.wrapped_line_starts, cast(s32) buffer.bytes.count);  // last line
 }
 
 retokenize :: (buffer: *Buffer) {
@@ -437,28 +433,28 @@ retokenize :: (buffer: *Buffer) {
 
     if buffer.lang == .Plain_Text {
         // We don't store tokens for plain text buffers
-        array_reset(*buffer.tokens);
+        reset(*buffer.tokens);
         for buffer.regions free(it.note);
-        array_reset(*buffer.regions);
+        reset(*buffer.regions);
         return;
     }
 
     tokenize_func := get_tokenize_function(buffer.lang);
 
     // Resize tokens if we ever changed the token array
-    if buffer.tokens || tokenize_func != null then array_resize(*buffer.tokens, buffer.bytes.count, initialize = true);
+    if !is_empty(buffer.tokens) || tokenize_func != null then resize(*buffer.tokens, buffer.bytes.count, initialize = true);
     if !tokenize_func return;  // this could be the case for e.g. the build panel
 
     new_regions := tokenize_func(buffer);
 
     // Clear buffer regions
     for buffer.regions free(it.note);
-    array_reset_keeping_memory(*buffer.regions);
+    reset_keeping_memory(*buffer.regions);
 
     for * region : new_regions {
         // Add regions into buffer
         if region.note then region.note = copy_string(region.note);
-        array_add(*buffer.regions, region.*);
+        add(*buffer.regions, region.*);
 
         // Maybe tokenize heredocs
         if region.kind == .heredoc {
@@ -693,8 +689,9 @@ save_buffer_to_file :: (buffer: *Buffer, buffer_id: s64, file_path: string) {
         save_buffer(buffer, buffer_id);
     } else {
         // We're "saving as", in which case we want to create a new buffer and also keep the current buffer
-        success := write_entire_file(file_path, cast(string) buffer.bytes);
+        success := write_entire_file(file_path, to_string(buffer.bytes));
         if !success {
+            buffer.error_when_saving = true;
             log_error("Couldn't write to file %", file_path);
             return;
         }
@@ -718,23 +715,25 @@ save_buffer :: (using buffer: *Buffer, buffer_id: s64) {
 
     assert(has_file, "Trying to save a buffer without an associated file. This is a bug.");
 
-    if config.settings.strip_trailing_whitespace_on_save then strip_trailing_whitespace(buffer, buffer_id);
+    if config.settings.strip_trailing_whitespace_on_save != .disabled {
+        strip_trailing_whitespace(buffer, buffer_id, except_lines_with_cursor = config.settings.strip_trailing_whitespace_on_save == .except_lines_with_cursor);
+    }
     if config.settings.insert_final_newline_on_save      then insert_final_newline(buffer);  // important to do it after stripping
 
-    success := write_entire_file(file.full_path, cast(string) bytes);
+    success := write_entire_file(file.full_path, to_string(bytes));
     if success {
         modified = false;
         modified_on_disk = false;
         deleted = false;
 
-        meow_hash = calculate_hash(bytes);
+        meow_hash = calculate_hash(to_view(bytes));
 
         error_when_saving = false;
         crlf = false;
     } else {
         error_when_saving = true;
     }
-    remember_last_modtime_and_size(buffer);
+    remember_last_mod_info(buffer);
     if editors.active >= 0 && editors.active < open_editors.count then update_window_title(open_editors[editors.active].buffer_id);
 
     // The config will attempt to refresh again on a file watcher message, but it should exit early because it will be unchanged.
@@ -785,22 +784,65 @@ delete_buffer_from_disk :: (using buffer: *Buffer) -> deleted: bool {
     }
     unlock(*open_buffers_lock);
 
+    finder.need_to_refresh_results = true;
+
     if file_is_watched(file_path) then stop_watching_file(file_path);
     return true;
 }
 
-strip_trailing_whitespace :: (using buffer: *Buffer, buffer_id: s64) {
+strip_trailing_whitespace :: (using buffer: *Buffer, buffer_id: s64, except_lines_with_cursor := false) {
     auto_release_temp();
 
+    // Get active cursor positions if we're saving the active buffer
+    active_cursors: [] s32;
+    {
+        editor, _ := get_active_editor_and_buffer();
+        if editor && editor.buffer_id == buffer_id {
+            active_cursors = NewArray(editor.cursors.count, s32,, allocator = temp);
+            for * active_cursors  it.* = editor.cursors[it_index].pos;
+        }
+    }
+
+    // Prepare the stripped buffer contents
     b: String_Builder;
     b.allocator = temp;
     init_string_builder(*b, buffer_size = bytes.count + size_of(String_Builder.Buffer));
-    lines := split(cast(string) bytes, cast(u8) #char "\n",, allocator = temp);
-    for line, i : lines {
+
+    line_start := line_starts[0];
+    for line_end : to_view(line_starts, 1, line_starts.count - 1) {
+        line := string.{ count = line_end - line_start, data = bytes.data + line_start };
+
+        pos_of_rightmost_cursor_on_this_line := -1;
+        if except_lines_with_cursor {
+            // Keep cursors where they are
+            c := active_cursors;
+            for pos : c {
+                if pos < line_start {
+                    // Don't check this cursor for subsequent lines
+                    active_cursors.count -= 1;
+                    active_cursors.data  += 1;
+                } else if pos < line_end {
+                    pos_of_rightmost_cursor_on_this_line = pos;
+                } else {
+                    break;  // no need to check any other cursors for this line
+                }
+            }
+            if pos_of_rightmost_cursor_on_this_line >= 0 {
+                length := pos_of_rightmost_cursor_on_this_line - line_start;
+                line_until_cursor := slice(line, 0, length);
+                append(*b, line_until_cursor);  // preserve the line up to the rightmost cursor even if it's all whitespace
+                safe_advance(*line, length);
+            }
+        }
+
         append(*b, trim_right(line));
-        if i < lines.count - 1 then append(*b, "\n");
+        append(*b, "\n");
+
+        line_start = line_end;
     }
+
     stripped := builder_to_string(*b,, allocator = temp);
+    if stripped then stripped.count -= 1;  // remove the trailing newline we've added
 
     if stripped.count == bytes.count return;  // nothing stripped
 
@@ -818,11 +860,11 @@ strip_trailing_whitespace :: (using buffer: *Buffer, buffer_id: s64) {
     }
 
     // Replace buffer contents
-    new_replace_edit(buffer, 0, xx bytes.count, cast(string) bytes, stripped);
+    new_replace_edit(buffer, 0, bytes.count, to_string(bytes), stripped);
 
     lock(*content_lock);
     focus_memcpy(bytes.data, stripped.data, stripped.count);
-    bytes.count = stripped.count;
+    bytes.count = cast(s32) stripped.count;
     unlock(*content_lock);
 
     dirty = true;
@@ -858,20 +900,21 @@ insert_final_newline :: (using buffer: *Buffer) {
     new_insert_edit(buffer, bytes.count, "\n");
 
     lock(*content_lock);
-    array_resize(*bytes, bytes.count + 1);
+    resize(*bytes, bytes.count + 1);
     bytes[bytes.count - 1] = cast(u8) #char "\n";
     unlock(*content_lock);
 
     rescan_for_lines(buffer);
 }
 
-remember_last_modtime_and_size :: (using buffer: *Buffer) {
+remember_last_mod_info :: (using buffer: *Buffer) {
     assert(has_file, "Trying to remember last modtime and size of a buffer with no file. This is a bug");
 
-    modtime, size, success := file_modtime_and_size(file.full_path);
+    modtime_apollo, size, success := file_modtime_and_size(file.full_path);
     if success {
-        last_modtime = modtime;
-        last_size    = size;
+        // We don't care too much about precision here. We only care about last_modtime being different from the previous one if it changes
+        mod_info.last_modtime = cast,trunc(s32) to_milliseconds(modtime_apollo);
+        mod_info.last_size    = cast(s32) size;
     } else {
         log_error("Couldn't get modtime and size of file %\n", file.full_path);
     }
@@ -879,12 +922,13 @@ remember_last_modtime_and_size :: (using buffer: *Buffer) {
 
 buffer_file_has_changed_on_disk :: (using buffer: *Buffer) -> changed: bool {
     assert(has_file);
-    modtime, size, success := file_modtime_and_size(file.full_path);
+    modtime_apollo, size, success := file_modtime_and_size(file.full_path);
     if !success {
         log_error("Couldn't get modtime and size of %\n", file.full_path);
         return true;  // consider changed
     }
-    return modtime != last_modtime || size != last_size;
+    modtime := cast,trunc(s32) to_milliseconds(modtime_apollo);
+    return modtime != mod_info.last_modtime || size != mod_info.last_size;
 }
 
 is_empty :: (using buffer: Buffer, line_num: s32) -> bool {
@@ -894,7 +938,7 @@ is_empty :: (using buffer: Buffer, line_num: s32) -> bool {
 
 get_real_line_as_string :: (using buffer: Buffer, line_num: s32) -> string {
     assert(!buffer.dirty);
-    return _get_line_as_string(buffer, buffer.line_starts, line_num);
+    return _get_line_as_string(buffer, to_view(buffer.line_starts), line_num);
 }
 
 get_line_as_string :: (editor: Editor, buffer: Buffer, line_num: s32) -> string {
@@ -921,7 +965,7 @@ find_or_create_an_empty_buffer :: () -> buffer_id: s64, created: bool {
         // We have to only do this if the workspace scan is complete, otherwise we'll be in for
         // many surprising thread-related bugs
         for * buffer, buffer_id : open_buffers {
-            if !buffer.has_file && !buffer.readonly && !trim(cast(string) buffer.bytes) return buffer_id, false;
+            if !buffer.has_file && !buffer.deleted && !buffer.readonly && !trim(to_string(buffer.bytes)) return buffer_id, false;
         }
     }
 
@@ -962,27 +1006,37 @@ find_or_create_buffer :: (path: string) -> buffer_id: s64, created: bool {
 
     // Create and load file
     file_data, success := read_entire_file(path);
-    if !success then file_data = sprint("Couldn't load file '%'", path);
-    if is_file_binary(file_data) {
+    load_error := "";
+    if !success {
+        load_error = sprint("Couldn't load file '%'", path);
+    } else if file_data.count > MAX_BUFFER_SIZE {
+        load_error = sprint("Couldn't load file '%' because it exceeds the maximum buffer size of 2,147,483,647 bytes", path);
+    } else if is_file_binary(file_data) {
+        load_error = sprint("Couldn't display file '%' because it's either binary or non-UTF8.", path);
+        buffer.binary = true;
+    }
+
+    if load_error {
         free(file_data);
-        file_data = sprint("Couldn't display file '%' because it's either binary or non-UTF8.", path);
+        file_data = load_error;
         buffer.readonly = true;
-        buffer.binary   = true;
+        buffer.lang = .Plain_Text;
+    } else {
+        buffer.lang = get_lang_from_path(path);
     }
 
     // Fill in buffer data
     buffer.file = get_file_info_from_full_path(path);
     buffer.has_file = true;
-    remember_last_modtime_and_size(buffer);
+    remember_last_mod_info(buffer);
 
     lock(*buffer.content_lock);
-    buffer.bytes = resizable(to_bytes(file_data));
+    buffer.bytes = from_view(to_bytes(file_data));
     bytes_removed := remove_crlf_in_place(*buffer.bytes);
     unlock(*buffer.content_lock);
 
     buffer.crlf = bytes_removed > 0;
-    buffer.meow_hash = calculate_hash(buffer.bytes);
-    buffer.lang = get_lang_from_path(path);
+    buffer.meow_hash = calculate_hash(to_view(buffer.bytes));
 
     rescan_for_lines(buffer);
     retokenize(buffer);
@@ -1079,20 +1133,20 @@ refresh_buffer_from_disk :: (path: string) {
         // TODO: display a dialog prompting to reload
         buffer.modified_on_disk = true;
     } else {
-        remember_last_modtime_and_size(buffer);
+        remember_last_mod_info(buffer);
 
         // Remember cursor state - if we have 2 editors then the last editor's state will be remembered
         for * editor : open_editors {
             if editor.buffer_id != buffer_id continue;
 
             new_edit_group(buffer, editor);
-            array_resize(*buffer.cursors, editor.cursors.count);
+            resize(*buffer.cursors, editor.cursors.count);
             for * cursor, i : buffer.cursors { cursor.* = editor.cursors[i]; }
         }
 
         // Reload its contents
-        new_replace_edit(buffer, 0, xx buffer.bytes.count, cast(string) buffer.bytes, file_contents_str);
-        replace_range_raw(buffer, 0, xx buffer.bytes.count, file_contents_str);
+        new_replace_edit (buffer, 0, buffer.bytes.count, to_string(buffer.bytes), file_contents_str);
+        replace_range_raw(buffer, 0, buffer.bytes.count, file_contents_str);
         rescan_for_lines(buffer);
         retokenize(buffer);
 
@@ -1130,18 +1184,16 @@ maybe_mark_buffer_as_deleted :: (buffer_id: s64) {
 
 free_buffer :: (using buffer: *Buffer) {
     // We don't do it often so it's ok to be slow here
-    array_free(bytes);
-    array_free(line_starts);
-    array_free(tokens);
+    free(bytes);
+    free(line_starts);
+    free(tokens);
 
     for * undos deinit(it);
     for * redos deinit(it);
-    array_free(undos);
-    array_free(redos);
-    array_free(edits);
-    array_free(edit_notifications);
-
-    array_free(cursors);
+    free(undos);
+    free(redos);
+    free(edits);
+    free(cursors);
 
     if has_file && file.full_path then free(file.full_path);
 
@@ -1188,14 +1240,29 @@ init_buffer :: (buffer: *Buffer) {
     init(*buffer.content_lock);
 }
 
+get_unsaved_buffer_ids :: () -> [] s64 /* temp */ {
+    result: [..] s64;
+    result.allocator = temp;
+
+    for buffer, buffer_id : open_buffers {
+        if is_unsaved(buffer) array_add(*result, buffer_id);
+    }
+
+    return result;
+}
+
 unsaved_buffers_exist :: () -> bool {
     // Linear search, hmmmm, that sounds slow.
     // Perhaps we should create an unsaved buffers microservice,
     // which would tell us if they exist in a O(1) time?
     for open_buffers {
-        if it.modified && !it.internal return true;
+        if is_unsaved(it) return true;
     }
     return false;
+}
+
+is_unsaved :: (buffer: Buffer) -> bool {
+    return buffer.modified && !buffer.readonly && !buffer.internal;
 }
 
 remove_all_buffers :: () {
@@ -1205,58 +1272,9 @@ remove_all_buffers :: () {
     bucket_array_reset(*open_buffers);
 }
 
-add_buffer_to_save_queue :: (buffer_id: s64, after_save: After_Save_Action = .do_nothing) {
-    array_add_if_unique(*buffer_save_queue.buffer_ids, buffer_id);
-    buffer_save_queue.pending = true;
-    buffer_save_queue.after_save = after_save;
-}
-
-remove_buffer_from_save_queue :: (buffer_id: s64, reset_after_save := false) {
-    array_ordered_remove_by_value(*buffer_save_queue.buffer_ids, buffer_id);
-    if reset_after_save then buffer_save_queue.after_save = .do_nothing;
-}
-
-clear_buffer_save_queue :: () {
-    array_reset_keeping_memory(*buffer_save_queue.buffer_ids);
-    buffer_save_queue.pending = false;
-}
-
-process_buffer_save_queue :: () {
-    using buffer_save_queue;
-
-    if !pending return;
-
-    if config.settings.prefer_system_file_dialogs && OS == .WINDOWS {
-        for buffer_id : buffer_ids {
-            buffer := *open_buffers[buffer_id];
-            file_path, success := platform_get_save_file_name(get_buffer_name(buffer));
-            if file_path && success {
-                save_buffer_to_file(buffer, buffer_id, file_path);
-            } else {
-                pending = false;  // don't execute the after save action
-            }
-            remove buffer_id;
-        }
-    }
-
-    if buffer_ids {
-        if active_global_widget != .open_file_dialog && active_global_widget != .confirm_overwrite_dialog {
-            show_open_file_dialog(.save, buffer_ids[0]);
-        }
-    } else if pending {
-        // Nothing left to save, execute the after save action
-        pending = false;
-        if #complete after_save == {
-            case .do_nothing;           // yay, do nothing
-            case .exit_program;         should_quit = true;
-            case .reload_workspace;     should_reload_workspace = true;
-        }
-    }
-}
-
 manually_mark_range_as_token :: (buffer: *Buffer, range: Offset_Range, color: Color) {
     assert(range.start >= 0 && range.end <= buffer.bytes.count);
-    array_resize(*buffer.tokens, buffer.bytes.count);
+    resize(*buffer.tokens, buffer.bytes.count);
     memset(buffer.tokens.data + range.start, xx color, range.end - range.start);
 }
 
@@ -1307,15 +1325,24 @@ Tokenize_Function :: #type (buffer: *Buffer, start_offset: s64 = -1, count: s64 
 
 add_edit_notification :: (using buffer: *Buffer, offset: s64, old_count: s64, new_count: s64) {
     if num_editors_open < 2 return;
-    array_add(*edit_notifications, Buffer.Edit_Notification.{
-        editor_id = cast(s32) context.current_editor_id,
+    editor_id := context.current_editor_id;
+    if editor_id < 0 return;
+    editor := *open_editors[editor_id];
+    if buffer != *open_buffers[editor.buffer_id] {
+        log_error("Attempting to send an edit notification from a mismatching editor. Editor id: %, buffer id: %\n", editor_id, editor.buffer_id);
+        return;
+    }
+
+    add(*buffer_edit_notifications, Buffer.Edit_Notification.{
+        buffer_id = cast(s32) editor.buffer_id,
+        editor_id = cast(s32) editor_id,
         offset    = cast(s32) (offset + min(old_count, new_count)),
         delta     = cast(s32) (new_count - old_count),
     });
 }
 
 new_replace_edit :: (buffer: *Buffer, start: s32, end: s32, old_str: string, new_str: string) {
-    edit := array_add(*buffer.edits);
+    edit := add(*buffer.edits);
     edit.type = .replace;
     using edit.replace;
     offset_range.start = start;
@@ -1326,8 +1353,8 @@ new_replace_edit :: (buffer: *Buffer, start: s32, end: s32, old_str: string, new
     clear_redos(buffer);
 }
 
-new_insert_edit :: (buffer: *Buffer, offset: s64, str: string) {
-    edit := array_add(*buffer.edits);
+new_insert_edit :: (buffer: *Buffer, offset: s32, str: string) {
+    edit := add(*buffer.edits);
     edit.type = .insert;
     edit.insert.offset = offset;
     edit.insert.new_bytes = copy_string(str);
@@ -1335,8 +1362,8 @@ new_insert_edit :: (buffer: *Buffer, offset: s64, str: string) {
     clear_redos(buffer);
 }
 
-new_insert_char_edit :: (buffer: *Buffer, offset: s64, char: Utf8_Char) {
-    edit := array_add(*buffer.edits);
+new_insert_char_edit :: (buffer: *Buffer, offset: s32, char: Utf8_Char) {
+    edit := add(*buffer.edits);
     edit.type = .insert_char;
     edit.insert_char.offset = offset;
     edit.insert_char.char = char;
@@ -1345,7 +1372,7 @@ new_insert_char_edit :: (buffer: *Buffer, offset: s64, char: Utf8_Char) {
 }
 
 new_delete_edit :: (buffer: *Buffer, start: s32, end: s32, old_str: string) {
-    edit := array_add(*buffer.edits);
+    edit := add(*buffer.edits);
     edit.type = .delete;
     using edit.delete;
     offset_range.start = start;
@@ -1357,7 +1384,7 @@ new_delete_edit :: (buffer: *Buffer, start: s32, end: s32, old_str: string) {
 
 clear_redos :: (using buffer: *Buffer) {
     for * redos  deinit(it);
-    array_reset_keeping_memory(*redos);
+    reset_keeping_memory(*redos);
 }
 
 deinit :: (using edit_group: *Buffer.Edit_Group) {
@@ -1378,24 +1405,31 @@ deinit :: (using edit_group: *Buffer.Edit_Group) {
 
 #scope_export
 
-// TODO:
-// - reorganise to reduce size
-// - replace all [..] with a custom array type without an allocator (also probably using s32's)
+buffer_edit_notifications: Array(Buffer.Edit_Notification);
+
+
 Buffer :: struct {
+    bytes:       Array(u8);
+    line_starts: Array(s32);       // real offsets of newlines in the bytes array
+    tokens:      Array(Token_Type);     // we assign a token to each byte (even for multi-byte chars).
+    regions:     Array(Buffer_Region); // for highlighting parts of buffer
+
+    // @Memory: all of these are allocated on the heap, which is not great, but it works fine right now.
+    // Eventually we'll want to revisit all this and make it not allocate as much.
+    undos: Array(Edit_Group);
+    redos: Array(Edit_Group);
+    edits: Array(Edit);  // current edits, not in a group yet
+
+    cursors: Array(Cursor);  // cursor state before any current edits were made
+
+    content_lock: Mutex;  // must hold while modifying content (or reading in a non-main thread)
+
     file: File_Info;
-    num_times_opened: u8;
-    num_editors_open: u8;
 
     meow_hash: u64;
-    last_modtime: Apollo_Time;  // for detecting whether a file has changed
-    last_size: s64;             // --
+    last_edit_time: float64;  // for creating new edit groups
 
-    bytes: [..] u8;
-    line_starts: [..] s32;       // real offsets of newlines in the bytes array
-
-    tokens: [..] Token_Type;     // we assign a token to each byte (even for multi-byte chars).
-
-    regions: [..] Buffer_Region; // for highlighting parts of buffer
+    mod_info: Mod_Info;  // for detecting whether a file has changed
 
     // TODO: put into enum_flags
     has_file               := false;  // a buffer might not have a corresponding file
@@ -1411,19 +1445,10 @@ Buffer :: struct {
     error_when_saving      := false;
     crlf                   := false;
 
-    content_lock: Mutex;  // must hold while modifying content (or reading in a non-main thread)
-
-    last_edit_time: Apollo_Time;  // for creating new edit groups
-
-    // @Memory: all of these are allocated on the heap, which is not great, but it works fine right now.
-    // Eventually we'll want to revisit all this and make it not allocate as much.
-    undos: [..] Edit_Group;
-    redos: [..] Edit_Group;
-    edits: [..] Edit;  // current edits, not in a group yet
-    cursors: [..] Cursor;  // cursor state before any current edits were made
-    edit_notifications: [..] Edit_Notification;  // TODO: make it a global array for all buffers instead
-
     lang: Lang = .Plain_Text;
+
+    num_times_opened: u8;
+    num_editors_open: u8;
 
     // A pointer to arbitrary buffer information.
     // Would be nice to be able to avoid using it if another way of attaching info to buffers is better. We'll see what the use patterns are.
@@ -1434,6 +1459,11 @@ Buffer :: struct {
         // ...
     }
     Extra_Type :: enum { focus_config; }
+
+    Mod_Info :: struct {
+        last_modtime: s32;  // Apollo_Time converted to milliseconds
+        last_size:    s32;
+    }
 
     Edit_Group :: struct {
         edits: [] Edit;
@@ -1446,11 +1476,11 @@ Buffer :: struct {
         type: enum { insert; insert_char; replace; delete; };
         union {
             insert: struct {
-                offset: s64;
+                offset: s32;
                 new_bytes: string;
             };
             insert_char: struct {
-                offset: s64;
+                offset: s32;
                 char: Utf8_Char;  // same as `insert`, but no need to allocate strings on the heap
                                   // it's probably the most common edit so it's worth it
             };
@@ -1469,6 +1499,7 @@ Buffer :: struct {
     // This is used to notify other editors for a buffer about edits.
     // This field set represents inserts, replaces and deletes in a uniform way
     Edit_Notification :: struct {
+        buffer_id: s32;
         editor_id: s32;
         offset:    s32;
         delta:     s32;
@@ -1530,7 +1561,7 @@ Coords :: struct {
 }
 
 Offset_Range :: struct {
-    start, end: s32;  // we won't open large files anyway
+    start, end: s32;
 }
 
 Buffer_Region :: struct {
@@ -1581,19 +1612,4 @@ Indentation_Token :: struct {
     };
 }
 
-
-#scope_file
-
-// A queue to allow us to use the in-editor save dialog for multiple buffers.
-// TODO: consider using a more generic action queue if we have more deferred actions later
-buffer_save_queue: struct {
-    pending := false;
-    buffer_ids: [..] s64;
-    after_save: After_Save_Action = .do_nothing;
-};
-
-After_Save_Action :: enum {
-    do_nothing;
-    exit_program;
-    reload_workspace;
-}
+MAX_BUFFER_SIZE :: S32_MAX;

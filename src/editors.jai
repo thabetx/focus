@@ -81,17 +81,17 @@ active_editor_handle_event :: (editor: *Editor, buffer: *Buffer, event: Input.Ev
 
     if editor.search_bar.active {
         using editor.search_bar;
-        old_search_str := copy_temporary_string(cast(string) input.text);
+        old_search_str := copy_temporary_string(to_string(input.text));
         handled := text_input_handle_event(*input, event);
         if handled {
-            if old_search_str != cast(string) input.text then search_and_update_results(editor, buffer, jump = true);
+            if old_search_str != to_string(input.text) then search_and_update_results(editor, buffer, jump = true);
             return true;
         }
 
         // Handle editor actions which make sense while the search bar is open
         editor_action := map_event_to_action(event, Action_Editors);
         if editor_action == {
-            case .select_all_occurrences;           select_all_occurrences(editor, buffer, cast(string) input.text); close_search_bar(editor); return true;
+            case .select_all_occurrences;           select_all_occurrences(editor, buffer, to_string(input.text)); close_search_bar(editor); return true;
         }
 
         // Handle search dialog actions
@@ -146,11 +146,11 @@ active_editor_handle_event :: (editor: *Editor, buffer: *Buffer, event: Input.Ev
     // We always want to put some actions in a separate edit group (e.g. block indent)
     new_group := false;
     for cursor : editor.cursors { if new_edit_group_required_for_action(action, cursor) { new_group = true; break; } }
-    if new_group || to_float64_seconds(frame_time - buffer.last_edit_time) >= EDIT_GROUP_TIMEOUT then new_edit_group(buffer, editor);  // do it before action
+    if new_group || (to_float64_seconds(frame_time) - buffer.last_edit_time) >= EDIT_GROUP_TIMEOUT then new_edit_group(buffer, editor);  // do it before action
 
     // We want to remember where cursors were before we do any edits
     if buffer.edits.count == 0 {
-        array_resize(*buffer.cursors, editor.cursors.count);
+        resize(*buffer.cursors, editor.cursors.count);
         for * cursor, i : buffer.cursors { cursor.* = editor.cursors[i]; }
     }
 
@@ -172,14 +172,16 @@ active_editor_handle_event :: (editor: *Editor, buffer: *Buffer, event: Input.Ev
         case .close_right_editor;               close_editor(.right);
 
         case .close_dialog;                     hide_build_panel();
-        case .escape;                           hide_build_panel();
+        case .escape;                           if editor.cursors.count == 1 hide_build_panel();
                                                 remove_additional_cursors(editor);
                                                 reset_search_results(*editor.search_bar);
                                                 editor.refresh_selection = true;
 
-        case .save;                             save    (editor.buffer_id);
-        case .save_as;                          save_as (editor.buffer_id);
+        case .save;                             save(editor, editors.active);
         case .save_all;                         save_all();
+        case .save_as;                          defer_action_save_as(editor.buffer_id);
+        case .move_current_file;                defer_action_move   (editor.buffer_id);
+        case .delete_current_file;              defer_action_delete (editor.buffer_id);
 
         case .switch_to_left_editor;            switch_to_editor(.left);
         case .switch_to_right_editor;           switch_to_editor(.right);
@@ -204,7 +206,6 @@ active_editor_handle_event :: (editor: *Editor, buffer: *Buffer, event: Input.Ev
         case .toggle_line_wrap;                 toggle_line_wrap                    (editor);
         case .toggle_line_numbers;              toggle_line_numbers                 ();
         case .copy_current_line_info;           copy_current_line_info              (editor, buffer);
-        case .delete_current_file;              show_delete_file_dialog             (editor);
         case .center_viewport_on_cursor;        center_viewport_on_cursor           (editor, buffer);
         case .move_cursor_to_viewport_center;   move_cursor_to_viewport_center      (editor, buffer);
         case .remove_additional_cursors;        remove_additional_cursors           (editor);
@@ -306,7 +307,7 @@ active_editor_handle_event :: (editor: *Editor, buffer: *Buffer, event: Input.Ev
     if buffer.dirty {
         rescan_for_lines(buffer);
         if line_wrap_is_active(editor) then rescan_for_wrapped_lines(editor, buffer);
-        if editor.search_bar.results then search_and_update_results(editor, buffer, jump = false);
+        if !is_empty(editor.search_bar.results) then search_and_update_results(editor, buffer, jump = false);
     }
     for * editor.cursors put_cursor_in_valid_spot(it, buffer);
     if editor.cursors.count > 1 then organise_cursors(editor);  // sort and maybe merge overlapping cursors
@@ -341,13 +342,13 @@ active_editor_type_char :: (char: u32) {
     new_group := false;  // we always want to remember cursor state when a selection is replaced with anything
     for editor.cursors { if has_selection(it) { new_group = true; break; } }
 
-    if new_group || to_float64_seconds(frame_time - buffer.last_edit_time) >= EDIT_GROUP_TIMEOUT {
+    if new_group || (to_float64_seconds(frame_time) - buffer.last_edit_time) >= EDIT_GROUP_TIMEOUT {
         new_edit_group(buffer, editor);
     }
 
     if buffer.edits.count == 0 {
         // We want to remember where cursors were before we do any edits
-        array_resize(*buffer.cursors, editor.cursors.count);
+        resize(*buffer.cursors, editor.cursors.count);
         for * cursor, i : buffer.cursors { cursor.* = editor.cursors[i]; }
     }
 
@@ -400,10 +401,10 @@ active_editor_type_char :: (char: u32) {
     if editor.cursors.count > 1 then organise_cursors(editor);
     for * cursor : editor.cursors  cursor.col_wanted = -1;
 
-    buffer.last_edit_time = frame_time;
+    buffer.last_edit_time = frame_time64;
     editor.cursor_moved = .unimportant;
     cursors_start_blinking();
-    if editor.search_bar.results then search_and_update_results(editor, buffer, jump = false);
+    if !is_empty(editor.search_bar.results) then search_and_update_results(editor, buffer, jump = false);
 }
 
 get_active_editor_and_buffer :: () -> *Editor, *Buffer {
@@ -419,37 +420,39 @@ get_active_editor_and_buffer :: () -> *Editor, *Buffer {
 
 refresh_all_editors_for_buffer :: (buffer_id: s64) {
     buffer := *open_buffers[buffer_id];
+
     for * editor, editor_id : open_editors {
         if editor.buffer_id != buffer_id continue;
 
         if editor.line_wrap == .on then rescan_for_wrapped_lines(editor, buffer);
 
-        adjust_cursors_and_viewport(editor, buffer, editor_id);
-        editor.refresh_selection = true;
-        if editor.search_bar.results then search_and_update_results(editor, buffer);
-    }
-    array_reset_keeping_memory(*buffer.edit_notifications);
-}
+        // Adjust cursors and viewport.
+        // When edits are made in another editor for the same buffer, this editor's cursors
+        // need to be adjusted. The viewport glue point also needs to move.
+        for edit : buffer_edit_notifications {
+            if edit.buffer_id != buffer_id continue;  // this is a notification for a different buffer
+            if edit.editor_id == editor_id continue;  // this editor's cursors have already moved
 
-adjust_cursors_and_viewport :: (editor: *Editor, buffer: Buffer, current_editor_id: s64) {
-    // When edits are made in another editor for the same buffer, this editor's cursors
-    // need to be adjusted. The viewport glue point also needs to move.
-    for edit : buffer.edit_notifications {
-        if edit.editor_id == current_editor_id continue;  // this editor's cursors have already moved
+            // Adjust viewport
+            using editor.viewport.glue_point;
+            if buffer_pos >= edit.offset then buffer_pos = max(buffer_pos + edit.delta, edit.offset);
 
-        // Adjust viewport
-        using edit;
-        using editor.viewport.glue_point;
-        if buffer_pos >= offset then buffer_pos = max(buffer_pos + delta, offset);
-
-        for * cursor : editor.cursors {
-            if cursor.pos >= offset then cursor.pos = max(cursor.pos + delta, offset);
-            if cursor.sel >= offset then cursor.sel = max(cursor.sel + delta, offset);
+            for * cursor : editor.cursors {
+                if cursor.pos >= edit.offset then cursor.pos = max(cursor.pos + edit.delta, edit.offset);
+                if cursor.sel >= edit.offset then cursor.sel = max(cursor.sel + edit.delta, edit.offset);
+            }
         }
+        for * cursor : editor.cursors { put_cursor_in_valid_spot(cursor, buffer); }
+        if editor.cursors.count > 1 then organise_cursors(editor);
+
+        editor.refresh_selection = true;
+        if !is_empty(editor.search_bar.results) then search_and_update_results(editor, buffer);
     }
 
-    for * cursor : editor.cursors { put_cursor_in_valid_spot(cursor, buffer); }
-    if editor.cursors.count > 1 then organise_cursors(editor);
+    // Clear applied notifications
+    for buffer_edit_notifications {
+        if it.buffer_id == buffer_id  remove it;
+    }
 }
 
 editors_open_file :: (path: string, placement: Editor_Placement = .in_place) -> success: bool {
@@ -490,7 +493,7 @@ editors_show_default_config :: (placement: Editor_Placement) {
         global_config_buffer_id = find_or_create_an_empty_buffer();
         buffer := *open_buffers[global_config_buffer_id];
         replace_range_raw(buffer, 0, xx buffer.bytes.count, DEFAULT_CONFIG_FILE_DATA);
-        buffer.meow_hash = calculate_hash(buffer.bytes);
+        buffer.meow_hash = calculate_hash(to_view(buffer.bytes));
         buffer.readonly = true;
         buffer.internal = true;
         buffer.lang = .Focus_Config;
@@ -516,7 +519,7 @@ editors_show_troubleshooting_info :: (placement: Editor_Placement) {
 
     buffer := *open_buffers[global_troubleshooting_buffer_id];
     replace_range_raw(buffer, 0, xx buffer.bytes.count, platform_get_troubleshooting_info());
-    buffer.meow_hash = calculate_hash(buffer.bytes);
+    buffer.meow_hash = calculate_hash(to_view(buffer.bytes));
     rescan_for_lines(buffer);
 
     editors_open_buffer(global_troubleshooting_buffer_id, placement);
@@ -615,7 +618,7 @@ go_to_line :: (editor: *Editor, buffer: Buffer, line: s64, col: s32 = -1) {
         if cursor.pos > line_end then cursor.pos = line_end;
         cursor.sel = cursor.pos;
     }
-    add_paste_animation(editor, .{ line_start, line_end});
+    add_paste_animation(editors.active, .{ line_start, line_end});
     editor.cursor_moved = .jumped;
     editor.scroll_to_cursor = .yes;
 }
@@ -670,7 +673,7 @@ organise_cursors :: (using editor: *Editor, selection_mode: *Selection_Mode = nu
     main_cursor_offset     := cursors[main_cursor].pos;
     original_cursor_offset := cursors[original_cursor].pos;
 
-    quick_sort(cursors, compare_cursors);
+    quick_sort(to_view(cursors), compare_cursors);
 
     // Adjust main and original cursor indices because they could've moved
     for cursor, i : cursors {
@@ -685,7 +688,7 @@ organise_cursors :: (using editor: *Editor, selection_mode: *Selection_Mode = nu
         next_cursor := cursors[i+1];
         if maybe_subsume(cursor, next_cursor) {
             if selection_mode && (main_cursor == i || main_cursor == i+1) then selection_mode.min_range = get_selection(cursor);  // preserve the selection when dragging
-            array_ordered_remove_by_index(*cursors, i+1);
+            ordered_remove_by_index(*cursors, cast(s32)i+1);
             if main_cursor     > i then main_cursor -= 1;
             if original_cursor > i then original_cursor -= 1;
         } else {
@@ -719,10 +722,11 @@ get_max_y_scroll :: (editor: Editor, buffer: Buffer) -> s32 {
     return max(cast(s32) (get_max_line_num(editor, buffer)  * line_height), 0);
 }
 
-add_paste_animation :: (using editor: *Editor, range: Offset_Range) {
-    if config.settings.disable_that_annoying_paste_effect return;
+add_paste_animation :: (editor_id: s64, range: Offset_Range) {
+    if !config.settings.show_paste_effect return;
 
-    anim := array_add(*paste_animations);
+    anim := array_add(*editor_paste_animations);
+    anim.editor_id = editor_id;
     anim.range = range;
     anim.started_at = frame_time;
 }
@@ -805,28 +809,8 @@ close_editor :: (position: enum { current; other; left; right; }) {
 }
 
 close_current_editor :: () {
-    if build_panel_is_active() {
-        toggle_build_panel();
-        return;
-    }
-    if editors.layout == {
-        case .None;     return;
-        case .Single;
-            editors.layout = .None;  // close immediately
-            update_window_title();
-            do_things_on_editor_close(editors.active);
-
-        case .Double;
-            editor_closing_id = editors.active;
-            if !config.settings.disable_file_open_close_animations {
-                // Start the animation (the layout will change when the animation is finished)
-                editors_start_moving_splitter(ifx editors.active == editors.left then 0.0 else 1.0);
-                make_editor_active(ifx editors.active == editors.left then editors.right else editors.left);
-            } else {
-                make_editor_active(ifx editors.active == editors.left then editors.right else editors.left);
-                finish_closing_editor();
-            }
-    }
+    if build_panel_is_active() { toggle_build_panel(); return; }
+    close_editor_by_id(editors.active);
 }
 
 close_other_editor :: () {
@@ -835,14 +819,48 @@ close_other_editor :: () {
     if editors.layout == {
         case .None;     return;
         case .Single;   return;  // don't do anything
-        case .Double;
-            editor_closing_id = ifx editors.active == editors.left then editors.right else editors.left;
-            if !config.settings.disable_file_open_close_animations {
-                // Start the animation (the layout will change when the animation is finished)
-                editors_start_moving_splitter(ifx editors.active == editors.left then 1.0 else 0.0);
-            } else {
-                finish_closing_editor();
+        case .Double;   close_editor_by_id(ifx editors.active == editors.left then editors.right else editors.left);
+    }
+}
+
+close_editor_by_id :: (editor_id: s64, skip_animation := false) {
+    if editors.layout == {
+        case .None;
+            do_things_on_editor_close(editor_id);
+
+        case .Single;
+            if editor_id == editors.active {
+                editors.layout = .None;
+                update_window_title();
             }
+            do_things_on_editor_close(editor_id);
+
+        case .Double;
+            if editor_id == editors.left || editor_id == editors.right {
+                editor_closing_id = editor_id;
+                if !config.settings.disable_file_open_close_animations && !skip_animation {
+                    // Start the animation (the layout will change when the animation is finished)
+                    editors_start_moving_splitter(ifx editor_id == editors.left then 0.0 else 1.0);
+                    make_editor_active(ifx editor_id == editors.left then editors.right else editors.left);
+                } else {
+                    make_editor_active(ifx editor_id == editors.left then editors.right else editors.left);
+                    finish_closing_editor();
+                }
+            } else {
+                do_things_on_editor_close(editor_id);
+            }
+    }
+}
+
+close_editors_for_buffer :: (buffer_id: s64) {
+    should_skip_animation := false;
+    if editors.layout == .Double {
+        left_editor  := *open_editors[editors.left];
+        right_editor := *open_editors[editors.right];
+        should_skip_animation = left_editor.buffer_id == buffer_id && right_editor.buffer_id == buffer_id;
+    }
+    for editor, editor_id : open_editors {
+        if editor.buffer_id == buffer_id then close_editor_by_id(editor_id, skip_animation = should_skip_animation);
     }
 }
 
@@ -857,15 +875,21 @@ finish_closing_editor :: () {
 }
 
 do_things_on_editor_close :: (editor_id: s64) {
+    if editor_id < 0 return;
     editor := *open_editors[editor_id];
     buffer := *open_buffers[editor.buffer_id];
 
-    // Remove buffer from the open buffers if it's not unsaved and if there's no editor with this buffer currently visible
-    assert(editors.layout != .Double, "An editor just closed but layout is still .Double. This is a bug.");
-    buffer_is_still_visible := editors.layout == .Single && editors.active != editor_id && open_editors[editors.active].buffer_id == editor.buffer_id;
-    if !buffer_is_still_visible && !buffer.modified {
+    buffer_is_still_visible := false;
+    if #complete editors.layout == {
+        case .None;
+        case .Single; buffer_is_still_visible = open_editors[editors.active].buffer_id == editor.buffer_id;
+        case .Double; buffer_is_still_visible = open_editors[editors.left].buffer_id == editor.buffer_id || open_editors[editors.right].buffer_id == editor.buffer_id;
+        case .Cow;
+    }
+    if !buffer_is_still_visible {
         array_ordered_remove_by_value(*most_recent_buffers, editor.buffer_id);
-        buffer.num_times_opened = 0;  // deprioritise it in the full file list
+        if !buffer.modified then buffer.num_times_opened = 0;  // deprioritise it in the full file list
+        if !buffer.has_file { buffer.deleted = true; buffer.modified = false; }  // get rid of newly created buffers we're closing
     }
 }
 
@@ -895,6 +919,7 @@ open_search_bar :: (using editor: *Editor, buffer: Buffer, requested_mode: Searc
     using editor.search_bar;
     active = true;
     mode = requested_mode;
+    case_sensitive_toggled_manually = false;  // forget when reopening
 
     // If there was some text selected that doesn't span more than one line, use it for search
     if cursors.count == 1 {
@@ -931,7 +956,7 @@ close_search_bar :: inline (editor: *Editor, jump_to_original_cursor := false, j
         editor.scroll_to_cursor = .yes;
     }
 
-    if jump_to_selected_result && results {
+    if jump_to_selected_result && !is_empty(results) {
         cursor := leave_only_original_cursor(editor);
         cursor.sel = xx results[selected_result].offset;
         cursor.pos = xx (cursor.sel + results[selected_result].count);
@@ -966,6 +991,7 @@ search_bar_toggle_case_sensitive :: (using editor: *Editor, buffer: Buffer) {
 
     if !active return;
     case_sensitive = !case_sensitive;
+    case_sensitive_toggled_manually = true;
 
     search_and_update_results(editor, buffer);
     redraw_requested = true;
@@ -981,13 +1007,13 @@ search_bar_toggle_regex_search :: (using editor: *Editor, buffer: Buffer) {
     redraw_requested = true;
 }
 
-search_bar_move_cursor :: (using editor: *Editor, buffer: Buffer, delta: s64, wrap := false, snap := true) {
+search_bar_move_cursor :: (using editor: *Editor, buffer: Buffer, delta: s32, wrap := false, snap := true) {
     using search_bar;
 
     selected_result += delta;
 
     if wrap {
-        if selected_result < 0 then selected_result = max(0, results.count - 1);
+        if selected_result < 0 then selected_result = max(results.count - 1, 0);
         if selected_result >= results.count then selected_result = 0;
     } else {
         if selected_result < 0 then selected_result = 0;
@@ -1034,8 +1060,12 @@ search_bar_open_selected_result :: (editor: Editor, buffer: Buffer, placement: E
 search_and_update_results :: (using editor: *Editor, buffer: Buffer, jump := false) {
     reset_search_results(*search_bar);
 
-    needle := cast(string) search_bar.input.text;
+    needle := to_string(search_bar.input.text);
     if !needle return;
+
+    if config.settings.search_is_case_sensitive_when_uppercase_present && !search_bar.case_sensitive_toggled_manually {
+        search_bar.case_sensitive = contains_uppercase_ascii(needle);
+    }
 
     assert(buffer.bytes.count < S32_MAX && needle.count < S32_MAX);
 
@@ -1050,11 +1080,10 @@ search_and_update_results :: (using editor: *Editor, buffer: Buffer, jump := fal
 }
 
 free_editor :: (using editor: *Editor) {
-    array_reset(*cursors);
-    array_reset(*paste_animations);
-    array_reset(*highlights);
-    array_reset(*search_bar.results);
-    array_reset(*wrapped_line_starts);
+    reset(*cursors);
+    reset(*highlights);
+    reset(*search_bar.results);
+    reset(*wrapped_line_starts);
 }
 
 #scope_file
@@ -1069,7 +1098,7 @@ find_all_using_regex :: (using search_bar: *Search_Bar, needle: string, buffer: 
     if !regex_is_valid return;
     defer re.uninit(*regex);
 
-    buffer_str := cast(string) buffer.bytes;
+    buffer_str := to_string(buffer.bytes);
 
     while true {
         if buffer_str.count <= 0 break;
@@ -1090,9 +1119,9 @@ find_all_using_regex :: (using search_bar: *Search_Bar, needle: string, buffer: 
         // Valid result, add it to the list
         if selected_result < 0 && offset >= search_point_offset then selected_result = results.count;
 
-        result := array_add(*results);
-        result.offset = offset;
-        result.count  = count;
+        result := add(*results);
+        result.offset = cast(s32) offset;
+        result.count  = cast(s32) count;
         result.line   = offset_to_real_line(buffer, offset);
 
         if results.count >= 5000 break;
@@ -1100,7 +1129,7 @@ find_all_using_regex :: (using search_bar: *Search_Bar, needle: string, buffer: 
 }
 
 find_all :: (using search_bar: *Search_Bar, needle: string, buffer: Buffer) {
-    buffer_str := cast(string) buffer.bytes;
+    buffer_str := to_string(buffer.bytes);
 
     offset := 0;
     skip_table := bmh_prepare_skip_table(needle, case_sensitive);
@@ -1117,9 +1146,9 @@ find_all :: (using search_bar: *Search_Bar, needle: string, buffer: Buffer) {
         // Valid result, add it to the list
         if selected_result < 0 && offset >= search_point_offset then selected_result = results.count;
 
-        result := array_add(*results);
-        result.offset = offset;
-        result.count  = needle.count;
+        result := add(*results);
+        result.offset = cast(s32) offset;
+        result.count  = cast(s32) needle.count;
         result.line   = offset_to_real_line(buffer, offset);
 
         offset += needle.count;
@@ -1148,7 +1177,7 @@ jump_to_search_result :: (using editor: *Editor, buffer: Buffer, move_search_poi
 }
 
 reset_search_results :: (using search_bar: *Search_Bar) {
-    array_reset(*results);
+    reset(*results);
     selected_result = -1;
 }
 
@@ -1342,7 +1371,7 @@ scan_through_similar_chars_on_the_right :: (using buffer: Buffer, offset: s32, o
         if !is_non_word_char(char) { s.data, char = unicode_prev_character(s.data); }
     }
 
-    return cast(s32) min(bytes.count, s.data - bytes.data);
+    return min(bytes.count, cast(s32)(s.data - bytes.data));
 }
 
 cursors_start_blinking :: inline () {
@@ -1398,19 +1427,6 @@ viewport_glue_to_point :: (editor: *Editor, buffer: Buffer) -> changed: bool {
     return top != old_top;
 }
 
-restore_cursor_state :: (using editor: *Editor, cursor_state: [] Cursor) {
-    if cursor_state.count == 0 return;
-
-    array_resize(*cursors, cursor_state.count);
-    for * cursor, i : cursors {
-        cursor.* = cursor_state[i];
-        cursor.col_wanted = -1;
-    }
-    if main_cursor >= cursors.count then main_cursor = cursors.count - 1;  // maybe we should remember it too
-
-    editor.cursor_moved = .jumped;
-}
-
 make_editor_active :: (editor_id: s64) {
     assert(editor_id < open_editors.count, "Trying to activate editor %, but the last available one is %", editor_id, open_editors.count - 1);
     if is_build_panel(editor_id)         then build_panel_on_activate();
@@ -1457,7 +1473,7 @@ find_or_create_editor :: (buffer_id: s64, unwanted_existing_editor: s64 = -1) ->
     editor_id := open_editors.count;
     editor := array_add(*open_editors);
     editor.buffer_id = buffer_id;
-    array_add(*editor.cursors, Cursor.{});
+    add(*editor.cursors, Cursor.{});
 
     if config.settings.line_wrap_is_on_by_default {
         editor.line_wrap = .to_enable;
@@ -1479,7 +1495,7 @@ find_or_create_editor_for_cow :: (buffer_id: s64) -> editor_id: s64, created: bo
     editor := array_add(*open_editors);
     editor.buffer_id = buffer_id;
     editor.belongs_to_cow = true;
-    array_add(*editor.cursors, Cursor.{});
+    add(*editor.cursors, Cursor.{});
 
     if config.settings.line_wrap_is_on_by_default {
         editor.line_wrap = .to_enable;
@@ -1494,14 +1510,19 @@ find_or_create_editor_for_cow :: (buffer_id: s64) -> editor_id: s64, created: bo
 new_edit_group :: (buffer: *Buffer, editor: *Editor) {
     if buffer.edits.count == 0 return;
 
-    new_group := array_add(*buffer.undos);
+    new_group := add(*buffer.undos);
     new_group.edits = to_owned_array(*buffer.edits);  // @Speed: could group all char inserts into one if needed
     new_group.cursors_before = to_owned_array(*buffer.cursors);
-    new_group.cursors_after  = array_copy(editor.cursors);
+    new_group.cursors_after  = to_view(copy(editor.cursors));
 
     // Remember cursor state
-    array_resize(*buffer.cursors, editor.cursors.count);
+    resize(*buffer.cursors, editor.cursors.count);
     for * cursor, i : buffer.cursors { cursor.* = editor.cursors[i]; }
+}
+
+save_all :: () {
+    unsaved_buffer_ids := get_unsaved_buffer_ids();
+    for < unsaved_buffer_ids  save(it);
 }
 
 #scope_file
@@ -1511,7 +1532,7 @@ delete_cursor :: (using editor: *Editor, buffer: Buffer, where: enum { above; be
     if where == .above { // we shrink upwards
         main_cursor -= 1;
     } else { // we shrink downwards
-        new_cursors: []Cursor = cursors;
+        new_cursors: [] Cursor = to_view(cursors);
         new_cursors.data += 1;
         new_cursors.count -= 1;
         for new_cursors cursors[it_index] = it;
@@ -1533,7 +1554,7 @@ create_cursor :: (using editor: *Editor, buffer: Buffer, where: enum { above; be
     } else if where == .below && main_cursor < original_cursor {
         // Should delete the top cursor instead
         assert(cursors.count > 1);
-        array_ordered_remove_by_index(*cursors, 0);
+        ordered_remove_by_index(*cursors, 0);
         if main_cursor     > 0 then main_cursor -= 1;
         if original_cursor > 0 then original_cursor -= 1;
     } else {
@@ -1543,7 +1564,7 @@ create_cursor :: (using editor: *Editor, buffer: Buffer, where: enum { above; be
         original_pos_coords := offset_to_coords(editor, buffer, original.pos);
         original_sel_coords := offset_to_coords(editor, buffer, original.sel);
 
-        array_add(*cursors, edge_cursor);
+        add(*cursors, edge_cursor);
         cursor := *cursors[cursors.count-1];
 
         pos_coords := offset_to_coords(editor, buffer, cursor.pos);
@@ -1567,6 +1588,19 @@ create_cursor :: (using editor: *Editor, buffer: Buffer, where: enum { above; be
     organise_cursors(editor);
 
     cursor_moved = .refresh_only;
+}
+
+restore_cursor_state :: (using editor: *Editor, cursor_state: [] Cursor) {
+    if cursor_state.count == 0 return;
+
+    resize(*cursors, cursor_state.count);
+    for * cursor, i : cursors {
+        cursor.* = cursor_state[i];
+        cursor.col_wanted = -1;
+    }
+    if main_cursor >= cursors.count then main_cursor = cursors.count - 1;  // maybe we should remember it too
+
+    editor.cursor_moved = .jumped;
 }
 
 // @TODO: have another look at the code and at the very least avoid rescanning for each cursor.
@@ -1660,7 +1694,7 @@ select_word_or_create_another_cursor :: (using editor: *Editor, buffer: Buffer) 
     selected_text := get_selected_text_all_cursors(editor, buffer);
     if selected_text {
         // Cursors have the same text selected - attempt to create another cursor
-        buffer_str := cast(string) buffer.bytes;
+        buffer_str := to_string(buffer.bytes);
 
         search_func: (s: string, substring: string, start_index := 0) -> s64;
         search_func = ifx search_whole_words && is_all_word_chars(selected_text) then find_index_from_left_whole_word else find_index_from_left;
@@ -1691,7 +1725,7 @@ select_word_or_create_another_cursor :: (using editor: *Editor, buffer: Buffer) 
             return editor.search_whole_words;  // found no matches
         }
 
-        new_cursor := array_add(*cursors);
+        new_cursor := add(*cursors);
         new_cursor.sel = cast(s32) found_offset;
         new_cursor.pos = cast(s32) (found_offset + selected_text.count);
 
@@ -1729,7 +1763,7 @@ select_all_occurrences :: (using editor: *Editor, buffer: Buffer, search_str := 
     leave_only_main_cursor(editor);
 
     // Begin search from the main cursor downwards with a wraparound
-    buffer_str    := cast(string) buffer.bytes;
+    buffer_str    := to_string(buffer.bytes);
     selected_text := ifx !search_str then get_selected_string(cursors[main_cursor], buffer) else search_str;
     search_func   := ifx !search_str && search_whole_words && is_all_word_chars(selected_text) then find_index_from_left_whole_word else find_index_from_left;
     initial       := get_selection(cursors[main_cursor]);
@@ -1746,7 +1780,7 @@ select_all_occurrences :: (using editor: *Editor, buffer: Buffer, search_str := 
             if !wrapped { offset = 0; wrapped = true; continue; } else break;
         }
 
-        new_cursor := array_add(*cursors);
+        new_cursor := add(*cursors);
         new_cursor.sel = cast(s32) offset;
         new_cursor.pos = cast(s32) (offset + selected_text.count);
 
@@ -1765,26 +1799,23 @@ select_all_occurrences :: (using editor: *Editor, buffer: Buffer, search_str := 
     return editor.search_whole_words;
 }
 
+save :: (editor: Editor, editor_id: s64) {
+    buffer_id := editor.buffer_id;
+
+    // When hitting save while in the color preview panel, save the target config file instead
+    if is_color_preview_panel(editor_id) then buffer_id = color_preview_get_target_buffer_id();
+
+    save(buffer_id);
+}
+
 save :: (buffer_id: s64) {
     buffer := *open_buffers[buffer_id];
-    if buffer.readonly return;
+    if buffer.readonly || buffer.internal return;
 
     if buffer.has_file {
         save_buffer(buffer, buffer_id);
     } else {
-        add_buffer_to_save_queue(buffer_id, after_save = .do_nothing);
-        redraw_requested = true;
-    }
-}
-
-save_as :: (buffer_id: s64) {
-    add_buffer_to_save_queue(buffer_id, after_save = .do_nothing);
-    redraw_requested = true;
-}
-
-save_all :: () {
-    for * buffer, buffer_id : open_buffers {
-        if buffer.modified  save(buffer_id);
+        defer_action_save_as(buffer_id);
     }
 }
 
@@ -1844,8 +1875,8 @@ duplicate_active_editor :: () -> s64 {
     duplicated_editor    := *open_editors[duplicated_editor_id];
 
     // Duplicate cursors
-    if duplicated_editor.cursors then array_reset(*duplicated_editor.cursors);
-    for current_editor.cursors { array_add(*duplicated_editor.cursors, it); }
+    if !is_empty(duplicated_editor.cursors) then reset(*duplicated_editor.cursors);
+    for current_editor.cursors { add(*duplicated_editor.cursors, it); }
     duplicated_editor.main_cursor     = current_editor.main_cursor;
     duplicated_editor.original_cursor = current_editor.original_cursor;
 
@@ -1897,7 +1928,7 @@ smooth_scroll :: (editor: Editor, direction: Smooth_Scroll_Direction, fast := fa
     }
 }
 
-cursors_match :: (c1: [] Cursor, c2: [] Cursor) -> bool {
+cursors_match :: (c1: Array(Cursor), c2: [] Cursor) -> bool {
     if c1.count != c2.count return false;
 
     for 0 .. c1.count-1 {
@@ -1924,13 +1955,13 @@ undo :: (editor: *Editor, buffer: *Buffer) {
         if #complete e.type == {
             case .delete;      using e.delete;       insert_string_raw(buffer, offset_range.start, old_bytes);
             case .replace;     using e.replace;      replace_range_raw(buffer, offset_range.start, offset_range.start + xx new_bytes.count, old_bytes);
-            case .insert;      using e.insert;       delete_range_raw (buffer, offset, offset + new_bytes.count);
-            case .insert_char; using e.insert_char;  delete_range_raw (buffer, offset, offset + char.count);
+            case .insert;      using e.insert;       delete_range_raw (buffer, offset, offset + cast(s32) new_bytes.count);
+            case .insert_char; using e.insert_char;  delete_range_raw (buffer, offset, offset + cast(s32)char.count);
         }
     }
 
     pop(*buffer.undos);
-    array_add(*buffer.redos, edit_group);  // push onto the redo stack
+    add(*buffer.redos, edit_group);  // push onto the redo stack
     restore_cursor_state(editor, edit_group.cursors_before);
 
     editor.cursor_moved = .large_edit;
@@ -1958,7 +1989,7 @@ redo :: (editor: *Editor, buffer: *Buffer) {
     }
 
     pop(*buffer.redos);
-    array_add(*buffer.undos, edit_group);  // push onto the undo stack
+    add(*buffer.undos, edit_group);  // push onto the undo stack
     restore_cursor_state(editor, edit_group.cursors_after);
 
     editor.cursor_moved = .large_edit;
@@ -2213,7 +2244,7 @@ break_line :: (editor: *Editor, buffer: *Buffer) {
         space := *space_per_cursor[it_index];
         prev_space := space_per_cursor[max(it_index-1, 0)];
         if space.original_start == prev_space.original_start then space.start = prev_space.start; else space.start += xx offset_delta;  // handle cursors on the same line well
-        space_str := cast(string) array_view(buffer.bytes, space.start, space.count);
+        space_str := cast(string) to_view(buffer.bytes, space.start, space.count);
         insert_str := tprint("\n%", space_str);
 
         cursor.pos += xx offset_delta;
@@ -2254,7 +2285,7 @@ new_line_below :: (editor: *Editor, buffer: *Buffer) {
         prev_line_info := line_info_per_cursor[max(it_index-1, 0)];
         if line_info.space.original_start == prev_line_info.space.original_start then line_info.space.start = prev_line_info.space.start; else line_info.space.start += xx offset_delta;  // handle cursors on the same line well
         line_info.end += xx offset_delta;
-        whitespace_str := cast(string) array_view(buffer.bytes, line_info.space.start, line_info.space.count);  // construct string from offsets to avoid memory errors on buffer reallocation
+        whitespace_str := cast(string) to_view(buffer.bytes, line_info.space.start, line_info.space.count);  // construct string from offsets to avoid memory errors on buffer reallocation
         insert_str := ifx line_info.last_line then tprint("\n%\n", whitespace_str) else tprint("%\n", whitespace_str);
 
         insert_string_at_offset(buffer, line_info.end, insert_str);
@@ -2287,7 +2318,7 @@ new_line_above :: (editor: *Editor, buffer: *Buffer) {
         prev_line_info := line_info_per_cursor[max(it_index-1, 0)];
         if line_info.space.original_start == prev_line_info.space.original_start then line_info.space.start = prev_line_info.space.start; else line_info.space.start += xx offset_delta;  // handle cursors on the same line well
         line_info.start += xx offset_delta;
-        whitespace_str := cast(string) array_view(buffer.bytes, line_info.space.start, line_info.space.count);  // construct string from offsets to avoid memory errors on buffer reallocation
+        whitespace_str := cast(string) to_view(buffer.bytes, line_info.space.start, line_info.space.count);  // construct string from offsets to avoid memory errors on buffer reallocation
         insert_str := tprint("%\n", whitespace_str);
 
         insert_string_at_offset(buffer, line_info.start, insert_str);
@@ -2454,12 +2485,12 @@ insert_tab_at_each_cursor :: (editor: *Editor, buffer: *Buffer) {
     editor.cursor_moved = .unimportant;
 }
 
-get_line_starts_for_lines_with_cursors_tmp :: (editor: *Editor, buffer: *Buffer) -> [..] s64 /* tmp */, last_line_end_offset: s64 {
-    line_starts: [..] s64;
+get_line_starts_for_lines_with_cursors_tmp :: (editor: *Editor, buffer: *Buffer) -> [..] s32 /* tmp */, last_line_end_offset: s32 {
+    line_starts: [..] s32;
     line_starts.allocator = temp;
 
     last_added := -1;
-    last_line_end_offset := 0;
+    last_line_end_offset: s32 = 0;
     for cursor : editor.cursors {
         selection := get_selection(cursor);
         start_line := offset_to_real_line(buffer, selection.start);
@@ -2501,7 +2532,7 @@ indent_lines :: (editor: *Editor, buffer: *Buffer) {
     for 0..line_starts.count-2 {
         start, end := line_starts[it], line_starts[it+1];
         append(*b, spaces);
-        append(*b, cast(string) array_view(buffer.bytes, start, end-start));
+        append(*b, cast(string) to_view(buffer.bytes, start, end-start));
     }
     new_str := builder_to_string(*b);
     defer free(new_str);
@@ -2524,7 +2555,7 @@ unindent_lines :: (editor: *Editor, buffer: *Buffer) {
     for 0..line_starts.count-2 {
         start, end := line_starts[it], line_starts[it+1];
         if start >= buffer.bytes.count continue;
-        spaces_at_line_start := 0;
+        spaces_at_line_start: s32 = 0;
         if buffer.bytes[start] == #char "\t" {
             // When seeing a tab, just remove it (and do nothing else)
             spaces_at_line_start = 1;
@@ -2540,7 +2571,7 @@ unindent_lines :: (editor: *Editor, buffer: *Buffer) {
             if cursor.sel > adjusted_start then cursor.sel -= xx min(cursor.sel - adjusted_start, spaces_at_line_start);
         }
         new_start := start + spaces_at_line_start;
-        append(*b, cast(string) array_view(buffer.bytes, new_start, end-new_start));
+        append(*b, cast(string) to_view(buffer.bytes, new_start, end-new_start));
         spaces_removed += spaces_at_line_start;
     }
     new_str := builder_to_string(*b);
@@ -2682,7 +2713,7 @@ add_cursors_to_line_starts :: (using editor: *Editor, buffer: Buffer) {
     if buffer.bytes.count <= 0 return;
 
     line_ranges := get_whole_line_ranges_for_cursors(editor, buffer);
-    array_reset_keeping_memory(*cursors);  // reset after getting ranges (obviously)
+    reset_keeping_memory(*cursors);  // reset after getting ranges (obviously)
 
     pos: s32;
 
@@ -2691,12 +2722,12 @@ add_cursors_to_line_starts :: (using editor: *Editor, buffer: Buffer) {
         while true {
             pos = buffer.line_starts[line_num];
             if pos >= line_range.end break;
-            array_add(*cursors, Cursor.{ pos = pos, sel = pos, col_wanted = -1 });
+            add(*cursors, Cursor.{ pos = pos, sel = pos, col_wanted = -1 });
             line_num += 1;
         }
     }
 
-    if !cursors then array_add(*cursors, Cursor.{ pos = pos, sel = pos, col_wanted = -1 });
+    if !cursors then add(*cursors, Cursor.{ pos = pos, sel = pos, col_wanted = -1 });
 
     main_cursor     = clamp(main_cursor,     0, cursors.count - 1);
     original_cursor = clamp(original_cursor, 0, cursors.count - 1);
@@ -2803,7 +2834,7 @@ duplicate_lines :: (editor: *Editor, buffer: *Buffer) {
         str := copy_temporary_string(get_range_as_string(buffer, line.range));
         if line.is_last then str = tprint("\n%", str);  // make sure duplication works correctly on the last line of the buffer
         insert_string_at_offset(buffer, line.range.end, str);
-        add_paste_animation(editor, .{ start = line.range.end, end = line.range.end + cast(s32)str.count });
+        add_paste_animation(editors.active, .{ start = line.range.end, end = line.range.end + cast(s32)str.count });
 
         for * cursor : editor.cursors {
             if line.range.start <= cursor.pos {  // no need to check for cursor.sel because we have whole line ranges
@@ -2826,7 +2857,7 @@ move_lines_up :: (editor: *Editor, buffer: *Buffer) {
         prev_line_range := Offset_Range.{ start = line.prev_line_start, end = line.range.start };
         view     := get_range_as_string(buffer, prev_line_range);
         prev_str := ifx line.is_last then tprint("\n%", view) else copy_temporary_string(view);
-        length   := view.count;  // this length should *not* include the optional newline character
+        length   := cast(s32) view.count;  // this length should *not* include the optional newline character
 
         delete_range(buffer, prev_line_range);
         insert_string_at_offset(buffer, line.range.end - length, prev_str);
@@ -2914,7 +2945,7 @@ join_lines :: (editor: *Editor, buffer: *Buffer, in_between := " ") {
 
         new_str := builder_to_string(*b,, allocator = temp);
         replace_range(buffer, range.range, new_str);
-        add_paste_animation(editor, .{ start = range.start + cast(s32)first_line.count, end = range.start + cast(s32)new_str.count });
+        add_paste_animation(editors.active, .{ start = range.start + cast(s32)first_line.count, end = range.start + cast(s32)new_str.count });
 
         offset_delta += new_str.count - range_str.count;
     }
@@ -2962,9 +2993,21 @@ delete_line :: (editor: *Editor, buffer: *Buffer, go_up := false) {
 
 delete_to_start_of_line :: (editor: *Editor, buffer: *Buffer) {
     for * cursor : editor.cursors {
-        selection := get_selection(cursor);
-        cursor.sel = selection.end;
-        cursor.pos = get_real_line_start_offset(buffer, offset_to_real_line(buffer, selection.start));
+        if has_selection(cursor) continue;
+
+        line := offset_to_real_line(buffer, cursor.pos);
+        start, end := get_real_line_start_offset(buffer, line), get_real_line_end_offset(buffer, line);
+
+        text_start_col: s32 = 0;
+        i := start;
+        while i < end {
+            byte := buffer.bytes[i];
+            if byte != #char " " && byte != #char "\t" break;
+            text_start_col += 1;
+            i += 1 + trailingBytesForUTF8[byte];
+        }
+        if cursor.pos > i then cursor.pos = i; else cursor.pos = start;
+        cursor.col_wanted = -1;
     }
     organise_cursors(editor);  // resolve overlapping selections
     copy_selection_to_clipboard(editor, buffer, cut = true, cut_lines_without_selection = false);
@@ -2972,9 +3015,8 @@ delete_to_start_of_line :: (editor: *Editor, buffer: *Buffer) {
 
 delete_to_end_of_line :: (editor: *Editor, buffer: *Buffer) {
     for * cursor : editor.cursors {
-        selection := get_selection(cursor);
-        cursor.sel = selection.start;
-        cursor.pos = get_real_line_end_offset(buffer, offset_to_real_line(buffer, selection.end));
+        if has_selection(cursor) continue;
+        cursor.pos = get_real_line_end_offset(buffer, offset_to_real_line(buffer, cursor.pos));
     }
     organise_cursors(editor);  // resolve overlapping selections
     copy_selection_to_clipboard(editor, buffer, cut = true, cut_lines_without_selection = false);
@@ -3080,7 +3122,7 @@ paste_from_clipboard :: (editor: *Editor, buffer: *Buffer) {
 
             cursor.pos   += xx str.count;
             offset_delta += str.count;
-            add_paste_animation(editor, .{ line_start, line_start + cast(s32) str.count });
+            add_paste_animation(editors.active, .{ line_start, line_start + cast(s32) str.count });
         }
         // If they have the same number of entries paste one slice per cursor
         else if editor.cursors.count == clipboard.slices.count {
@@ -3094,7 +3136,7 @@ paste_from_clipboard :: (editor: *Editor, buffer: *Buffer) {
 
             cursor.pos    = xx (selection.start + str.count);
             offset_delta += str.count - (selection.end - selection.start);
-            add_paste_animation(editor, .{ selection.start, selection.start + cast(s32) str.count });
+            add_paste_animation(editors.active, .{ selection.start, selection.start + cast(s32) str.count });
         }
         // Paste the entire clipboard for each cursor
         else {
@@ -3105,7 +3147,7 @@ paste_from_clipboard :: (editor: *Editor, buffer: *Buffer) {
 
             cursor.pos    = xx (selection.start + str.count);
             offset_delta += str.count - (selection.end - selection.start);
-            add_paste_animation(editor, .{ selection.start, selection.start + cast(s32) str.count });
+            add_paste_animation(editors.active, .{ selection.start, selection.start + cast(s32) str.count });
         }
     }
 
@@ -3179,14 +3221,14 @@ toggle_comment :: (editor: *Editor, buffer: *Buffer, is_fallback := false) {
     // We're using a single bit on the line start offset to mark lines as empty. This saves us from having to loop over every line *again*
     // once we start adding/removing comments. Since it is the sign bit, this doesn't overwrite any bits that could be part of valid offsets.
     // We set this bit manually instead of multiplying with -1 because this way it also works for offset 0.
-    EMPTY_LINE_BIT  :: (cast(s64) 1) >>> 1;
+    EMPTY_LINE_BIT  :: (cast(s32) 1) >>> 1;
     LINE_START_MASK :: ~EMPTY_LINE_BIT;
 
     min_indent  := -1;
     add_comment := false;
     for 0..last_line {
         start, end := line_starts[it], line_starts[it+1];
-        str := cast(string) array_view(buffer.bytes, start, end-start);
+        str := cast(string) to_view(buffer.bytes, start, end-start);
 
         // NOTE: 'str' may actually be multiple lines! This happens when you have two cursors and they are spaced multiple lines apart.
         //       You get the start offsets of both lines, and with start=[i] and end=[i+1] you are selecting the whole region in between
@@ -3251,7 +3293,7 @@ toggle_comment :: (editor: *Editor, buffer: *Buffer, is_fallback := false) {
         adjustment := 0;
         for 0..last_line {
             start, end := line_starts[it] & LINE_START_MASK, line_starts[it+1] & LINE_START_MASK;
-            str        := cast(string) array_view(buffer.bytes, start, end-start);
+            str        := cast(string) to_view(buffer.bytes, start, end-start);
             if line_starts[it] & EMPTY_LINE_BIT { append(*b, str); continue; }
 
             // Count how many characters are in the minimum indent, then cut off those characters since they will be replaced with new_whitespace
@@ -3291,7 +3333,7 @@ toggle_comment :: (editor: *Editor, buffer: *Buffer, is_fallback := false) {
         adjustment := 0;
         for 0..last_line {
             start, end := line_starts[it] & LINE_START_MASK, line_starts[it+1] & LINE_START_MASK;
-            str        := cast(string) array_view(buffer.bytes, start, end-start);
+            str        := cast(string) to_view(buffer.bytes, start, end-start);
             if line_starts[it] & EMPTY_LINE_BIT { append(*b, str); continue; }
 
             found, whitespace, after_comment := split_from_left(str, comment);
@@ -3388,10 +3430,10 @@ toggle_block_comment :: (editor: *Editor, buffer: *Buffer, is_fallback := false)
     for cursor : editor.cursors {
         selection := get_selection(cursor);
 
-        split_left := cast(string) buffer.bytes;
+        split_left := to_string(buffer.bytes);
         split_left.count = selection.start;
 
-        split_right := cast(string) buffer.bytes;
+        split_right := to_string(buffer.bytes);
         split_right.data  += selection.end;
         split_right.count -= selection.end;
 
@@ -3468,7 +3510,7 @@ toggle_block_comment :: (editor: *Editor, buffer: *Buffer, is_fallback := false)
             }
 
             start_pos := selection.start + move_count;
-            end_pos   := selection.end   + move_count + comment_start.count;
+            end_pos   := selection.end   + move_count + cast(s32) comment_start.count;
 
             insert_string_at_offset(buffer, start_pos, comment_start);
             insert_string_at_offset(buffer, end_pos,   comment_end);
@@ -3508,36 +3550,26 @@ copy_current_line_info :: (using editor: *Editor, buffer: Buffer) {
 Editor :: struct {
     buffer_id: s64;
 
-    cursors: [..] Cursor;
-    main_cursor: s64;      // newly added cursors become main so that we jump to them
-    original_cursor: s64;  // we remember the original cursor when first creating multiple cursors (and go back to it on escape)
+    viewport:   Viewport;
+    search_bar: Search_Bar;
 
-    search_whole_words := false;  // used when creating new cursors
-    cursor_moved := Cursor_Movement.has_not_moved; // this may trigger a scroll so that the cursor is within acceptable bounds
+    cursors: Array(Cursor);
+    highlights: Array(Text_Highlight);
+    wrapped_line_starts: Array(s32);  // empty when line wrap is off
 
-    // TODO: use a global flag rather than per editor?
-    new_cursor_just_created_using_mouse := false;  // useful to know in order to handle select-by-drag and select-word with the new cursor
-    last_cursor_created_using_mouse_at: Apollo_Time;
+    main_cursor: s32;      // newly added cursors become main so that we jump to them
+    original_cursor: s32;  // we remember the original cursor when first creating multiple cursors (and go back to it on escape)
 
-    initial_middle_mouse_coords: Coords; // used for creating cursors while dragging middle mouse button
-
-    scroll_to_cursor: enum u8 { no; yes; yes_new_editor; }  // trigger a scroll so that the cursor is in the center vertically
-
-    highlights: [..] Text_Highlight;
-    refresh_selection: bool;
     num_selected_chars: s32;  // across all cursors
     num_selected_bytes: s32;
 
-    search_bar: Search_Bar;
-
-    viewport: Viewport;
-
-    line_wrap: enum u8 { off; to_enable; to_disable; on; };
     last_width_in_chars: s32 = S32_MAX;
-    wrapped_line_starts: [..] s32;  // empty when line wrap is off
 
-    // TODO: make a global array instead
-    paste_animations: [..] Paste_Animation;
+    scroll_to_cursor: enum u8 { no; yes; yes_new_editor; }  // trigger a scroll so that the cursor is in the center vertically
+    line_wrap:        enum u8 { off; to_enable; to_disable; on; };
+    refresh_selection  := false;
+    search_whole_words := false;  // used when creating new cursors
+    cursor_moved := Cursor_Movement.has_not_moved; // this may trigger a scroll so that the cursor is within acceptable bounds
 
     belongs_to_cow: bool = false;
 }
@@ -3558,43 +3590,47 @@ Cursor_Movement :: enum u8 {
 }
 
 Viewport :: struct {
+    scroll_y := #run Tween_Animation(s32).{ speed = 0.1, func = .lerp };
+    scroll_x := #run Tween_Animation(s32).{ speed = 0.1, func = .lerp };
     top:  s32;
     left: s32;
     glue_point: Glue_Point;
-    scroll_y := #run Tween_Animation(s32).{ speed = xx 0.1, func = .lerp };
-    scroll_x := #run Tween_Animation(s32).{ speed = xx 0.1, func = .lerp };
 
     Glue_Point :: struct { buffer_pos: s32; offset_within_line: s32; }
 }
 
 Search_Bar :: struct {
-    active   := false;      // it receives keyboard input when active.
-    mode: Mode = .classic;
+    results: Array(Text_Highlight);
+    input: Text_Input;
 
-    width_percentage := WIDTH_NORMAL;  // how much of the screen the popup occupies
     width_anim := #run Tween_Animation(float).{ start = WIDTH_NORMAL, target = WIDTH_NORMAL };
     WIDTH_NORMAL   :: 0.5;
     WIDTH_EXPANDED :: 0.9;
 
-    input: Text_Input;
-
-    results: [..] Text_Highlight;
-    selected_result: s64 = -1;
-    search_point_offset: s32;  // the point used to determine the next search result. Fixed so that we can set cursor without jumping around
-    case_sensitive: bool;
-    whole_word: bool;
-    regex_search: bool;
-    regex_is_valid: bool;
-
-    original_cursor_position: Cursor;  // remember main cursor position so we can go back to it on Esc
-    jumped := false;
-
-    per_page := 10;
-    scroll_to_selected: Scroll_Mode = .no;
-    scroll_anim := #run Tween_Animation(s32).{ speed = xx 0.1, func = .lerp };
+    scroll_anim := #run Tween_Animation(s32).{ speed = 0.1, func = .lerp };
     scroll_y: s32;
 
-    Mode :: enum { classic; dropdown; }
+    width_percentage: float = WIDTH_NORMAL;  // how much of the screen the popup occupies
+
+    selected_result: s32 = -1;
+    search_point_offset: s32;  // the point used to determine the next search result. Fixed so that we can set cursor without jumping around
+
+    original_cursor_position: Cursor;  // remember the main cursor position so we can go back to it on Esc
+
+    per_page: s16 = 10;
+
+    // TODO: put into enum_flags
+    scroll_to_selected: Scroll_Mode = .no;
+    mode: Mode = .classic;
+    active:         bool;  // it receives keyboard input when active.
+    case_sensitive: bool;
+    case_sensitive_toggled_manually: bool;
+    whole_word:     bool;
+    regex_search:   bool;
+    regex_is_valid: bool;
+    jumped:         bool;
+
+    Mode :: enum u8 { classic; dropdown; }
 }
 
 // What to select when dragging
@@ -3604,15 +3640,16 @@ Selection_Mode :: struct {
     min_range: Offset_Range;
 }
 
-Scroll_Mode :: enum { no; yes; snap; };
+Scroll_Mode :: enum u8 { no; yes; snap; };
 
 Text_Highlight :: struct {
-    offset: s64;    // we'll convert this to position range, but only for the visible highlights
-    count: s64;
-    line: s32;      // useful to know line immediately to display in the scrollbar area
+    offset: s32;    // we'll convert this to position range, but only for the visible highlights
+    count: s32;
+    line: s32;      // useful to know the line number to display in the scrollbar area
 }
 
 Paste_Animation :: struct {
+    editor_id: s64;
     range: Offset_Range;
     coords_range: Coords_Range;
     initted := false;
@@ -3660,6 +3697,8 @@ most_recent_buffers: [..] s64;  // updated when an editor is activated, used to 
 
 editors: Editor_State;
 editor_closing_id := -1;  // holds the id of the editor being closed (so that we can change the layout when it's done closing)
+
+editor_paste_animations: [..] Paste_Animation;
 
 editor_history: Editor_History;
 
@@ -3849,9 +3888,8 @@ move_to_editor_history_frame :: (frame: Editor_History_Frame, old_frame: Editor_
         return;
     }
 
+    make_editor_active(editors.active);
     editor := *open_editors[editors.active];
-
-    update_window_title(editor.buffer_id);
 
     // Animations
     if old_frame.layout == .Single && frame.layout == .Double {

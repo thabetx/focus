@@ -47,16 +47,6 @@ arrays_concat :: (array1: [] $T, array2: [] T) -> [] T {
     return result;
 }
 
-to_owned_array :: (array: *[..]$T, free_memory := false) -> []T {
-    new_array := array_copy(<<array);
-    if free_memory {
-        array_reset(array);
-    } else {
-        array_reset_keeping_memory(array);
-    }
-    return new_array;
-}
-
 visual_col_to_byte_offset :: (str: string, target_col: s64, line_indent: s64) -> offset: s64, new_col: s64 {
     s := str;
     col := 0;
@@ -262,6 +252,15 @@ find_index_from_left_nocase :: (s: string, substring: string, start_index := 0) 
     return -1;
 }
 
+contains_uppercase_ascii :: (s: string) -> bool {
+    // TODO: support unicode too when we support case insensitive search for unicode strings
+    for 0 .. s.count-1 {
+        char := s[it];  // we don't care if it's part of a larger unicode char
+        if (char >= #char "A" && char <= #char "Z") return true;
+    }
+    return false;
+}
+
 match_whole_word :: (s: string, offset: int, count: int) -> bool {
     word_ends_on_the_left  := offset <= 0               || !is_word_char(s[offset - 1])     || !is_word_char(s[offset]);
     word_ends_on_the_right := offset + count >= s.count || !is_word_char(s[offset + count]) || !is_word_char(s[offset + count - 1]);
@@ -354,17 +353,17 @@ is_all_whitespace :: (s: string) -> bool {
     return true;
 }
 
-count_whitespace :: (bytes: [] u8, start_offset: s64, max_offset: s64, spaces := " \t") -> count: s32 {
-    subarray := array_view(bytes, start_offset, max_offset - start_offset);
+count_whitespace :: (bytes: Array(u8), start_offset: s32, max_offset: s32, spaces := " \t") -> count: s32 {
+    subarray := to_view(bytes, start_offset, max_offset - start_offset);
     for subarray {
         if !is_any(it, spaces) return cast(s32) it_index;
     }
-    return cast(s32) (max_offset - start_offset);
+    return max_offset - start_offset;
 }
 
-count_bytes_knowing_number_of_chars :: (bytes: [] u8, start_offset: s64, max_offset: s64, num_chars: s32) -> count: s32 {
+count_bytes_knowing_number_of_chars :: (bytes: Array(u8), start_offset: s32, max_offset: s32, num_chars: s32) -> count: s32 {
     count: s32 = 0;
-    s := cast(string) array_view(bytes, start_offset, max_offset - start_offset);
+    s := cast(string) to_view(bytes, start_offset, max_offset - start_offset);
     while s && num_chars {
         byte := s[0];
         num_bytes := clamp(1 + cast(s32) trailingBytesForUTF8[byte], 1, cast(s32) s.count);
@@ -388,6 +387,7 @@ get_visual_indent_in_spaces :: (line: string, spaces := " \t") -> indent: int {
 }
 
 get_tmp_spaces :: (num: int) -> string {
+    if num <= 0 return "";
     spaces := talloc_string(num);
     memset(spaces.data, cast(u8) #char " ", num);
     return spaces;
@@ -399,18 +399,18 @@ get_tmp_tabs :: (num: int) -> string {
     return tabs;
 }
 
-start_animation :: (anim: *Tween_Animation(T), start: $T, target: T, speed: Time = xx 0.0) {
+start_animation :: (anim: *Tween_Animation(T), start: $T, target: T, speed: float = 0.0) {
     anim.start  = start;
     anim.target = target;
     if speed > 0 then anim.speed = speed;
 
     // Pretend the animation started last frame so we start moving right away.
     // If the current frame was t=0, then the movement would simply be delayed one frame.
-    anim.started_at = frame_time - to_apollo(frame_dt);
+    anim.started_at = frame_time64 - frame_dt;
 }
 
 get_animation_value :: (using anim: Tween_Animation($T)) -> T {
-    t := (to_float64_seconds(frame_time - started_at) / speed);
+    t := (frame_time64 - started_at) / speed;
     t = clamp(t, 0, 1);
     if #complete func == {
         case .lerp;       return start + cast(T) (cast(float)(target - start) * t);
@@ -505,9 +505,9 @@ table_find_or_default :: (table: *Table, key: table.Key_Type) -> table.Value_Typ
 }
 
 Tween_Animation :: struct(T: Type) {
+    started_at: float64;
+    speed : float = xx 0.1;  // how many seconds to finish
     start, target: T;
-    started_at: Apollo_Time;
-    speed : Time = xx 0.1;  // how many seconds to finish
     func: enum { lerp; smoothstep; } = .smoothstep;
 }
 

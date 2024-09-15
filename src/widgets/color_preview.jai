@@ -64,6 +64,10 @@ is_color_preview_panel :: inline (editor_id: s64) -> bool {
     return editor_id == panel_editor_id;
 }
 
+color_preview_get_target_buffer_id :: inline () -> s64 {
+    return target_buffer_id;
+}
+
 color_preview_lose_focus :: () {
     // Sometimes we might want to make the previously active editor active, e.g. when deciding on new buffer placement
     if editors.active != editors.left && editors.active != editors.right && editors.left >= 0 && editors.right >= 0 {
@@ -166,8 +170,8 @@ color_preview_set_language :: (lang_id: int) {
     editor, buffer := *open_editors[panel_editor_id], *open_buffers[panel_buffer_id];
     buffer.lang = languages[lang_id].lang;
 
-    array_reset_keeping_memory(*buffer.undos);
-    array_reset_keeping_memory(*buffer.redos);
+    reset_keeping_memory(*buffer.undos);
+    reset_keeping_memory(*buffer.redos);
 
     sample_text := get_language_sample_text(buffer.lang);
     replace_range_raw(buffer, 0, xx buffer.bytes.count, sample_text);
@@ -250,7 +254,7 @@ color_preview_draw_color_picker :: (rect: Rect) {
     if count != 6 && count != 8 return;
 
     on_left := saved_position == .left;
-    draw_color_picker(editor, buffer, rect, .{color_start, color_end}, on_left);
+    draw_color_picker(target_editor_id, editor, buffer, rect, .{color_start, color_end}, on_left);
 }
 
 color_preview_jump_to_color_name :: (color_name: string) {
@@ -269,7 +273,7 @@ color_preview_jump_to_color_name :: (color_name: string) {
     cursor := leave_only_original_cursor(editor);
     cursor.pos = cast(s32) offset;
     cursor.sel = cursor.pos;
-    add_paste_animation(editor, get_real_line_range(buffer, offset_to_real_line(buffer, cursor.pos)));
+    add_paste_animation(target_editor_id, get_real_line_range(buffer, offset_to_real_line(buffer, cursor.pos)));
     editor.cursor_moved = .jumped;
     editor.scroll_to_cursor = .yes;
 }
@@ -319,7 +323,7 @@ get_language_sample_text :: (lang: Buffer.Lang) -> string {
 parse_config_and_get_offset_of_color_value :: (buffer: Buffer, color_name: string) -> offset: s32 {
     // Do some very superficial parsing, not super robust but better than plain search
     handler: Text_File_Handler;
-    trimmed_data := trim_left(cast(string) buffer.bytes, " \t\n\r");  // skip empty lines, otherwise the handler will crash!
+    trimmed_data := trim_left(to_string(buffer.bytes), " \t\n\r");  // skip empty lines, otherwise the handler will crash!
     start_from_memory(*handler, "colors", "colors", trimmed_data);
     if handler.failed return -1;
 
