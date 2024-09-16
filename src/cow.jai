@@ -19,11 +19,20 @@ Cow_Box :: struct {
     editor_id: s64;
 }
 cow_boxes: [..] Cow_Box;
+
+Cow_Banner :: struct {
+    text: string;
+    x: float;
+    y: float;
+}
+cow_banners: [..] Cow_Banner;
+
 inited := false;
 // cow 3
 
 cow_boxes_filepath :: "cow_boxes.txt";
 cow_camera_filepath :: "cow_camera.txt";
+cow_banners_filepath :: "cow_banners.txt";
 
 // cow 1 Serializing and Scanning
 cow_save :: () {
@@ -41,6 +50,14 @@ cow_save :: () {
         init_string_builder(*builder);
         print_to_builder(*builder, "% % %", cast(int)cow_camera.position.x, cast(int)cow_camera.position.y, cast(int)cow_camera.zoom);
         write_entire_file(cow_camera_filepath, builder_to_string(*builder));
+    }
+
+    { // banners
+        builder: String_Builder;
+        builder.allocator = temp;
+        init_string_builder(*builder);
+        for cow_banners print_to_builder(*builder, "% % %\n", cast(int)it.x, cast(int)it.y, it.text);
+        write_entire_file(cow_banners_filepath, builder_to_string(*builder));
     }
 }
 
@@ -68,6 +85,26 @@ cow_load :: () {
         if ok {
             cow_camera.position = .{xx x, xx y};
             cow_camera.zoom = xx zoom;
+        }
+    }
+
+    { // banners
+        banners_text := read_entire_file(cow_banners_filepath,, temp);
+        lines := split(banners_text, "\n",, allocator = temp);
+        for lines {
+            banner: Cow_Banner;
+            x, y: int;
+            ok: bool;
+            rem: string = it;
+            x, ok, rem = to_integer(rem);
+            if ok == false break;
+            y, ok, rem = to_integer(rem);
+            if ok == false break;
+            advance(*rem, 1);
+            banner.text = copy_string(rem);
+            banner.x = xx x;
+            banner.y = xx y;
+            array_add(*cow_banners, banner);
         }
     }
 }
@@ -152,6 +189,8 @@ cow_rescan ::() {
         close_editor_by_id(it.editor_id);
     }
     array_reset_keeping_memory(*cow_boxes);
+    for *cow_banners free(it.text);
+    array_reset_keeping_memory(*cow_banners);
     cow_scan();
     cow_load();
     for *cow_boxes {
@@ -192,6 +231,8 @@ Cow_State :: enum {
     HOVERING_EDITOR;
     DRAGGING_CAMERA;
     DRAGGING_EDITOR;
+    HOVERING_TEXT;
+    DRAGGING_TEXT;
     EDITING;
 }
 
@@ -206,12 +247,18 @@ hovered_box_index : s64 = -1;
 held_box_index : s64 = -1;
 edited_box_index : s64 = -1;
 
+hovered_text_index : s64 = -1;
+held_text_index : s64 = -1;
+
 // @NOTE maybe move this to draw.jai
 cow_input :: () {
     if #complete cow_state == {
         case .NONE;
             if hovered_box_index != -1 {
                 cow_state = .HOVERING_EDITOR;
+                cow_input();
+            } else if hovered_text_index != -1 {
+                cow_state = .HOVERING_TEXT;
                 cow_input();
             } else if mouse.middle.just_pressed || mouse.left.just_pressed {
                 cow_state = .DRAGGING_CAMERA;
@@ -275,6 +322,25 @@ cow_input :: () {
                     cow_state = .NONE;
                     cow_input();
                 }
+            }
+        case .HOVERING_TEXT;
+            if hovered_text_index == -1 {
+                cow_state = .NONE;
+                cow_input();
+            } else {
+                if mouse.left.just_pressed {
+                    held_text_index = hovered_text_index;
+                    cow_state = .DRAGGING_TEXT;
+                    cow_input();
+                }
+            }
+        case .DRAGGING_TEXT;
+            if mouse.left.just_released {
+                cow_state = .NONE;
+                cow_input();
+            } else if mouse.left.is_dragging {
+                cow_banners[held_text_index].x += mouse.delta.x / cow_x_scale;
+                cow_banners[held_text_index].y += mouse.delta.y / cow_y_scale;
             }
     }
 }

@@ -3708,7 +3708,7 @@ draw_cow :: (main_area: Rect) {
     hovering_header = false;
     hovered_box_index = -1;
 
-    for *cow_boxes {
+    for cow_boxes {
         world_rect := it.rect;
         world_rect.x *= cow_x_scale;
         world_rect.y *= cow_y_scale;
@@ -3749,6 +3749,25 @@ draw_cow :: (main_area: Rect) {
             Simp.draw_prepared_text(font_ui_medium, xx (header_rect.x + width + 2 * text_padding), xx (header_rect.y + 3*text_padding), color = xx Color.UI_DEFAULT);
             // draw_file_info(buffer, 0, 0, .{header_rect.x+width+20, header_rect.y + 10});
         }
+    }
+
+    hovered_text_index = -1;
+    banner_padding :: 10;
+    for cow_banners {
+        x_world := it.x * cow_x_scale;
+        y_world := it.y * cow_y_scale;
+        x_world -= cow_camera.position.x;
+        y_world -= cow_camera.position.y;
+
+        width := Simp.prepare_text(font_ui_big, it.text);
+        text_rect: Rect;
+        text_rect.x = x_world - banner_padding;
+        text_rect.y = y_world - banner_padding - font_ui_big_line_height/4;
+        text_rect.w = xx (width + 2*banner_padding);
+        text_rect.h = font_ui_big_line_height + 2*banner_padding;
+        draw_rect(text_rect, Color.REGION_SUCCESS);
+        if mouse_pointer_is_within(text_rect) hovered_text_index = it_index;
+        Simp.draw_prepared_text(font_ui_big, xx x_world, xx y_world, color = xx Color.UI_DEFAULT);
     }
 
     cow_input();
