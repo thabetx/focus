@@ -22,45 +22,49 @@ cow_boxes: [..] Cow_Box;
 inited := false;
 // cow 3
 
-cow_canvas_filepath :: "cow.txt";
-cow_state_filepath :: "cow_state.txt";
+cow_boxes_filepath :: "cow_boxes.txt";
+cow_camera_filepath :: "cow_camera.txt";
 
 // cow 1 Serializing and Scanning
 cow_save :: () {
-    builder: String_Builder;
-    builder.allocator = temp;
-    init_string_builder(*builder);
-    for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
-    write_entire_file(cow_canvas_filepath, builder_to_string(*builder));
+    { // boxes
+        builder: String_Builder;
+        builder.allocator = temp;
+        init_string_builder(*builder);
+        for cow_boxes print_to_builder(*builder, "% % %\n", it.id, cast(int)it.rect.x, cast(int)it.rect.y);
+        write_entire_file(cow_boxes_filepath, builder_to_string(*builder));
+    }
 
-    {
+    { // camera
         builder: String_Builder;
         builder.allocator = temp;
         init_string_builder(*builder);
         print_to_builder(*builder, "% % %", cast(int)cow_camera.position.x, cast(int)cow_camera.position.y, cast(int)cow_camera.zoom);
-        write_entire_file(cow_state_filepath, builder_to_string(*builder));
+        write_entire_file(cow_camera_filepath, builder_to_string(*builder));
     }
 }
 
 cow_load :: () {
-    canvas_text := read_entire_file(cow_canvas_filepath,, temp);
-    lines := split(canvas_text, "\n",, allocator = temp);
-    for lines {
-        id, x, y: int;
-        ok := scan2(it, "% % %", *id, *x, *y);
-        if ok == false break;
-        for *cow_boxes {
-            if it.id == id {
-                it.rect.x = xx x;
-                it.rect.y = xx y;
+    { // boxes
+        boxes_text := read_entire_file(cow_boxes_filepath,, temp);
+        lines := split(boxes_text, "\n",, allocator = temp);
+        for lines {
+            id, x, y: int;
+            ok := scan2(it, "% % %", *id, *x, *y);
+            if ok == false break;
+            for *cow_boxes {
+                if it.id == id {
+                    it.rect.x = xx x;
+                    it.rect.y = xx y;
+                }
             }
         }
     }
 
-    {
-        state_text := read_entire_file(cow_state_filepath,, temp);
+    { // camera
+        camera_text := read_entire_file(cow_camera_filepath,, temp);
         x, y, zoom : int;
-        ok := scan2(state_text, "% % %", *x, *y, *zoom);
+        ok := scan2(camera_text, "% % %", *x, *y, *zoom);
         if ok {
             cow_camera.position = .{xx x, xx y};
             cow_camera.zoom = xx zoom;
