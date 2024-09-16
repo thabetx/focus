@@ -147,10 +147,21 @@ cow_open :: () {
 
 }
 cow_rescan ::() {
-    for *cow_boxes free(it.name);
+    for *cow_boxes {
+        free(it.name);
+        close_editor_by_id(it.editor_id);
+    }
     array_reset_keeping_memory(*cow_boxes);
     cow_scan();
     cow_load();
+    for *cow_boxes {
+        buffer_id := find_or_create_buffer(it.file_path);
+        it.editor_id = find_or_create_editor_for_cow(buffer_id);
+        editor := *open_editors[it.editor_id];
+        viewport := *editor.viewport;
+        // the 0.5 is to hide any part of the start-1 line
+        start_animation(*viewport.scroll_y, viewport.top, xx ((it.start_line+.5) * line_height));
+    }
 }
 cow_close :: () {
     if editors.layout == .Cow {
